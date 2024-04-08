@@ -23,6 +23,13 @@ jobs:
       run: cargo test --verbose
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v4.3.1
+      if: ${{ matrix.os == 'windows-latest' }}
+      with:
+        name: sbsrf-update
+        path: target/release/sbsrf-update.exe
+    - name: Upload a Build Artifact
+      uses: actions/upload-artifact@v4.3.1
+      if: ${{ matrix.os == 'macos-latest' }}
       with:
         name: sbsrf-update
         path: target/release/sbsrf-update
