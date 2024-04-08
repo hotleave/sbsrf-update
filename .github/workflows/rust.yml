@@ -19,7 +19,13 @@ jobs:
       uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
+
+    - name: Install x86_64-pc-windows-gnu
+      run: rustup target add x86_64-pc-windows-gnu
     
+    - name: Install aarch64-apple-darwin
+      run: rustup target add aarch64-apple-darwin
+      
     - name: Cross compile for Windows
       run: cargo build --release --target x86_64-pc-windows-gnu
       env:
