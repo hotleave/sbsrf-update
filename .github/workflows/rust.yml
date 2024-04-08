@@ -17,19 +17,25 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - name: Install Rust toolchain for ARM
+      if: ${{ matrix.os == 'macos-latest' }}
+      run: |
+        rustup target add aarch64-apple-darwin
+        brew install filosottile/musl-cross/musl-cross
+        ln -s "$(brew --prefix musl-cross)/bin/aarch64-linux-musl-gcc" "/usr/local/bin/aarch64-apple-darwin-gcc"
     - name: Build
-      run: cargo build --release
+      run: cargo build --release --target=aarch64-apple-darwin
     - name: Run tests
       run: cargo test --verbose
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v4.3.1
       if: ${{ matrix.os == 'windows-latest' }}
       with:
-        name: sbsrf-update
+        name: sbsrf-update-windows
         path: target/release/sbsrf-update.exe
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v4.3.1
       if: ${{ matrix.os == 'macos-latest' }}
       with:
-        name: sbsrf-update
+        name: sbsrf-update-macos-aarch64
         path: target/release/sbsrf-update
