@@ -83,24 +83,35 @@ async fn download_and_install(component: String, url: String, file_path: PathBuf
     pb.set_style(spinner_style);
 
     unzip(file_path, config.get_rime_config_path(), pb).await;
-
-    // pb.finish_with_message("完成");
 }
 
 
 fn backup(backup_version: &String, config: &Config) {
-    let target_path = config.working_dir.join("backup").join(backup_version);
-    if target_path.exists() {
-        return;
-    }
-    fs::create_dir_all(target_path.clone()).unwrap();
-    println!("备份当前版本到：{}", target_path.display());
-
     let source_path = config.get_rime_config_path();
     if !source_path.exists() {
         return;
     }
 
+    let backup_path = config.working_dir.join("backup");
+    let target_path = backup_path.join(backup_version);
+    if target_path.exists() {
+        return;
+    }
+    fs::create_dir_all(target_path.clone()).unwrap();
+
+    let backups = fs::read_dir(backup_path.clone()).unwrap().filter_map(Result::ok);
+    let count = backups.count();
+    if count >= config.get_max_backups() as usize {
+        let backups = fs::read_dir(backup_path.clone()).unwrap().filter_map(Result::ok);
+        let mut backup_items: Vec<_> = backups.collect();
+        backup_items.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+        let to_be_removed: Vec<_> = backup_items.iter().take(count + 1 - config.get_max_backups() as usize).collect();
+        for backup in to_be_removed {
+            fs::remove_dir_all(backup.path()).unwrap();
+        }
+    }
+
+    println!("备份当前版本到：{}", target_path.display());
     let spinner_style = ProgressStyle::with_template("{prefix:.bold.dim} {spinner} {wide_msg}")
         .unwrap()
         .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ");
@@ -152,6 +163,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             config.set_version(release_version, version_name);
             config.save();
+
+            println!("更新完成，重新部署即可开始使用新版本");
         }
     }
 

@@ -56,8 +56,8 @@ impl Config {
           max_backups: 1,
           include_octagram: false,
           update_custom_config: true,
-          version_id: String::from("not-available"),
-          version_name: String::from("original"),
+          version_id: String::from("init-version"),
+          version_name: String::from("20051203"),
         },
         rime: RimeConfig {
           config_path: Self::default_rime_config_path(),
@@ -80,12 +80,24 @@ impl Config {
     }
   }
 
+  #[cfg(not(target_os = "windows"))]
   pub fn path_in_home(sub_path: &str) -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap()).join(sub_path)
   }
 
+  #[cfg(target_os = "macos")]
   pub fn default_rime_config_path() -> PathBuf {
     Self::path_in_home("Library/Rime")
+  }
+
+  #[cfg(target_os = "windows")]
+  pub fn path_in_home(sub_path: &str) -> PathBuf {
+    PathBuf::from(std::env::var("APPDATA").unwrap()).join(sub_path)
+  }
+
+  #[cfg(target_os = "windows")]
+  pub fn default_rime_config_path() -> PathBuf {
+    Self::path_in_home("Rime")
   }
 
   pub fn get_rime_config_path(&self) -> PathBuf {

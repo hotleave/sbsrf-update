@@ -21,3 +21,25 @@ Options:
   -h, --help                       打印帮助信息
   -V, --version                    打印本程序的版本信息
 ```
+
+### 配置文件
+
+```text
+# 工作目录，cli 参数 -w 指定，无须更改
+working_dir = "/Users/hotleave/.sbsrf-update/macos"
+
+[app]
+# 最大备份数量
+max_backups = 1
+
+# 是否下载 octagram.zip
+include_octagram = false
+
+# 版本信息，更新后自动填写，无须更改
+version_id = "33cc3af76d53139c4cb8463c0f4637d316caad0e"
+version_name = "20240331"
+
+[rime]
+# Rime 用户目录
+config_path = "/Users/hotleave/Library/Rime"
+```
