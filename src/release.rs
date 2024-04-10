@@ -2,14 +2,8 @@ use regex::Regex;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
-struct Commit {
-    id: String,
-}
-
-#[derive(Deserialize, Debug)]
 struct Tag {
     name: String,
-    commit: Commit,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -41,16 +35,13 @@ impl Release {
     pub async fn init() -> Result<Self, reqwest::Error> {
         // let response = reqwest::get("http://127.0.0.1:18080/sbxlm/sbxlm/releases/latest").await?;
         let response = reqwest::get("https://gitee.com/sbxlm/sbxlm/releases/latest").await?;
-        Ok(response.json::<Release>().await?)
+        response.json::<Release>().await
     }
 
     pub fn get_version(&self) -> String {
         self.release.tag.name.clone()
     }
 
-    pub fn get_id(&self) -> String {
-        self.release.tag.commit.id.clone()
-    }
     pub fn get_assets(&self) -> Vec<AttachFile> {
         self.release.release.attach_files.clone()
     }
@@ -60,11 +51,11 @@ impl Release {
         let re = Regex::new(r"</?p>|<br/?>").unwrap();
         let description = re.replace_all(release.description.as_str(), "");
 
-        return format!(
+        format!(
             "{title}\n\n{release_at}\n\n{description}",
             title = release.title,
             release_at = release.created_at,
             description = description
-        );
+        )
     }
 }

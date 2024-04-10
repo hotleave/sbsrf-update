@@ -7,7 +7,7 @@ use clap::Parser;
 use cli::Cli;
 use config::Config;
 use console::style;
-use dialoguer::Confirm;
+use dialoguer::{theme::ColorfulTheme, Confirm, Select};
 use indicatif::MultiProgress;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
@@ -33,9 +33,9 @@ struct Context {
 impl Context {
     pub fn new(cli: Cli) -> Self {
         let platform = cli.platform;
-        let working_dir = cli.working_dir.unwrap_or(PathBuf::from(
-            Config::path_in_home(".sbsrf-update").join(platform.clone()),
-        ));
+        let working_dir = cli
+            .working_dir
+            .unwrap_or(Config::path_in_home(".sbsrf-update").join(platform.clone()));
         let config = config::Config::new(working_dir.clone());
         let remote = platform == "ios";
 
@@ -44,13 +44,13 @@ impl Context {
             platform,
             force: cli.force,
             remote,
-            host: cli.host.unwrap_or(String::new()),
+            host: cli.host.unwrap_or_default(),
             config,
         }
     }
 }
 
-fn check_file_item(name: &String, ctx: Context) -> bool {
+fn check_file_item(name: &str, ctx: Context) -> bool {
     if name.starts_with("sbsrf") {
         return true;
     }
@@ -93,7 +93,7 @@ async fn upgrade(release: Release, ctx: Context) {
 
     // Wait for all downloads to finish
     for task in tasks {
-        let _ = task.await.expect("下载或安装失败");
+        task.await.expect("下载或安装失败");
     }
 }
 
@@ -144,9 +144,10 @@ async fn download_and_install(
 
     if ctx.remote {
         let pb = m.add(ProgressBar::new_spinner());
-        pb.set_prefix(format!("上传"));
+        pb.set_prefix("上传");
         pb.set_style(spinner_style.clone());
         let _ = upload_to_ios(output_dir.clone(), ctx.host, pb).await;
+        fs::remove_dir_all(output_dir).unwrap();
     }
 }
 
@@ -157,7 +158,7 @@ async fn backup(ctx: Context) {
     }
 
     let backup_path = ctx.working_dir.join("backup");
-    let target_path = backup_path.join(ctx.config.get_version_name());
+    let target_path = backup_path.join(ctx.config.get_version());
     if target_path.exists() {
         return;
     }
@@ -172,7 +173,7 @@ async fn backup(ctx: Context) {
             .unwrap()
             .filter_map(Result::ok);
         let mut backup_items: Vec<_> = backups.collect();
-        backup_items.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+        backup_items.sort_by_key(|x| x.file_name());
         let to_be_removed: Vec<_> = backup_items
             .iter()
             .take(count + 1 - ctx.config.get_max_backups() as usize)
@@ -207,7 +208,7 @@ async fn backup(ctx: Context) {
             .unwrap()
             .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ");
         let pb = ProgressBar::new_spinner();
-        pb.set_prefix(format!("备份 {}", ctx.config.get_version_name()));
+        pb.set_prefix(format!("备份 {}", ctx.config.get_version()));
         pb.set_style(spinner_style);
         copy_dir_contents(&source_path, &target_path, |path| {
             pb.set_message(format!("{}", path.display()));
@@ -218,21 +219,96 @@ async fn backup(ctx: Context) {
     }
 }
 
+async fn restore(ctx: Context) {
+    let backup_path = ctx.working_dir.join("backup");
+    let mut backups: Vec<fs::DirEntry> = fs::read_dir(backup_path.clone())
+        .unwrap()
+        .filter_map(Result::ok)
+        .collect();
+    backups.sort_by_key(|x| x.file_name());
+
+    let selections: Vec<String> = backups
+        .iter()
+        .map(|e| {
+            return e.file_name().to_str().unwrap().to_string();
+        })
+        .collect();
+    let selected = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("选择要恢复的版本")
+        .default(selections.len() - 1)
+        .items(&selections)
+        .interact()
+        .unwrap();
+
+    let confirmation = Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("确认要恢复到 {} 版本吗？", selections[selected]))
+        .default(false)
+        .interact()
+        .unwrap();
+
+    if confirmation {
+        let spinner_style = ProgressStyle::with_template("{prefix:.bold.dim} {spinner} {wide_msg}")
+            .unwrap()
+            .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ");
+
+        let from = if ctx.remote {
+            // 解压
+            let file_path = backups[selected].path().join("Rime.zip");
+            let output_dir = ctx.working_dir;
+            let pb = ProgressBar::new_spinner();
+            pb.set_style(spinner_style.clone());
+            unzip(file_path, output_dir.clone(), pb).await;
+            output_dir.join("Rime")
+        } else {
+            backups[selected].path()
+        };
+
+        let to = ctx.config.get_rime_config_path();
+
+        let pb = ProgressBar::new_spinner();
+        pb.set_style(spinner_style.clone());
+        pb.set_prefix("还原");
+
+        if ctx.remote {
+            upload_to_ios(from.clone(), ctx.host, pb.clone()).await.unwrap();
+            fs::remove_dir_all(from).unwrap();
+        } else {
+            copy_dir_contents(&from, &to, |entry| {
+                pb.set_message(format!("{}", entry.display()));
+                pb.inc(1);
+            })
+            .unwrap();
+        }
+        pb.finish_with_message("完成");
+
+        let mut config = ctx.config;
+        let version_name = selections.get(selected).unwrap().to_string();
+        config.set_version(version_name);
+        config.save();
+
+        println!("还原完成，重新部署即可");
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli::Cli::parse();
-    let ctx = Context::new(cli);
+    let ctx = Context::new(cli.clone());
 
-    let local_version = ctx.config.get_version_id();
+    if cli.restore {
+        restore(ctx).await;
+        return Ok(());
+    }
+
+    let local_version = ctx.config.get_version();
     let release = Release::init().await?;
-    let release_version = release.get_id();
-    let version_name = release.get_version();
+    let release_version = release.get_version();
 
     if release_version == local_version && !ctx.force {
         println!(
             "{} 上安装的已经是最新版本: {}",
             style(ctx.platform).cyan(),
-            style(version_name.clone()).cyan()
+            style(local_version.clone()).cyan()
         );
     } else {
         let force = release_version == local_version && ctx.force;
@@ -244,7 +320,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
 
-        let confirmation = Confirm::new()
+        let confirmation = Confirm::with_theme(&ColorfulTheme::default())
             .with_prompt(if force {
                 "本地已经是最新版本，是否要重新升级？"
             } else {
@@ -260,7 +336,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if ctx.platform == "ios" {
-                let confirmation = Confirm::new()
+                let confirmation = Confirm::with_theme(&ColorfulTheme::default())
                     .with_prompt(
                         "ios 设备是否已经打开 'Wi-Fi 上传方案' 且与当前终端连接到了同一网络？",
                     )
@@ -277,7 +353,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             upgrade(release, ctx.clone()).await;
 
             let mut config = ctx.config.clone();
-            config.set_version(release_version, version_name);
+            config.set_version(release_version);
             config.save();
 
             println!("更新完成，重新部署即可开始使用新版本");

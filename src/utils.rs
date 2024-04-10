@@ -4,20 +4,20 @@ use reqwest::Client;
 use std::collections::VecDeque;
 use std::fs::{self, File};
 use std::io::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use zip::ZipArchive;
 
-pub fn copy_dir_contents<F>(from: &PathBuf, to: &PathBuf, callback: F) -> std::io::Result<()>
+pub fn copy_dir_contents<F>(from: &Path, to: &Path, callback: F) -> std::io::Result<()>
 where
     F: Fn(&PathBuf),
 {
     if !to.exists() {
-        fs::create_dir_all(to.clone()).unwrap();
+        fs::create_dir_all(to).unwrap();
     }
 
     let mut stack = VecDeque::new();
-    stack.push_back((from.clone(), to.clone()));
+    stack.push_back((from.to_path_buf(), to.to_path_buf()));
 
     while let Some((src, dst)) = stack.pop_front() {
         for entry in fs::read_dir(&src)? {

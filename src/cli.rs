@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::Parser;
 
 /// 声笔输入法更新程序
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(version, about)]
 pub struct Cli {
     /// 工作目录，默认在 $HOME/.sbsrf-update
@@ -21,4 +21,8 @@ pub struct Cli {
     /// iOS 设备 IP 地址
     #[arg(long)]
     pub host: Option<String>,
+
+    /// 还原备份的版本
+    #[arg(long)]
+    pub restore: bool,
 }

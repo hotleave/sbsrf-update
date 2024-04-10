@@ -18,10 +18,6 @@ struct AppConfig {
      */
     update_custom_config: bool,
     /**
-     * 当前版本号
-     */
-    version_id: String,
-    /**
      * 当前版本名称
      */
     version_name: String,
@@ -47,8 +43,7 @@ impl Config {
         let config_file = working_dir.join("config.toml");
         if config_file.exists() {
             let content = fs::read_to_string(config_file).unwrap();
-            let config: Config = toml::from_str(content.as_str()).unwrap();
-            return config;
+            toml::from_str(content.as_str()).unwrap()
         } else {
             let config = Self {
                 working_dir,
@@ -56,7 +51,6 @@ impl Config {
                     max_backups: 1,
                     include_octagram: false,
                     update_custom_config: true,
-                    version_id: String::from("init-version"),
                     version_name: String::from("20051203"),
                 },
                 rime: RimeConfig {
@@ -64,19 +58,16 @@ impl Config {
                 },
             };
 
-            match config_file.parent() {
-                Some(parent) => {
-                    if !parent.exists() {
-                        fs::create_dir_all(parent).unwrap();
-                    }
+            if let Some(parent) = config_file.parent() {
+                if !parent.exists() {
+                    fs::create_dir_all(parent).unwrap();
                 }
-                None => {}
             }
 
             let content = toml::to_string(&config).unwrap();
             fs::write(config_file, content).unwrap();
 
-            return config;
+            config
         }
     }
 
@@ -104,16 +95,11 @@ impl Config {
         self.rime.config_path.clone()
     }
 
-    pub fn get_version_id(&self) -> String {
-        self.app.version_id.clone()
-    }
-
-    pub fn get_version_name(&self) -> String {
+    pub fn get_version(&self) -> String {
         self.app.version_name.clone()
     }
 
-    pub fn set_version(&mut self, version_id: String, version_name: String) {
-        self.app.version_id = version_id;
+    pub fn set_version(&mut self, version_name: String) {
         self.app.version_name = version_name;
     }
 
