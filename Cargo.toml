@@ -2,7 +2,7 @@
 
 [package]
 name = "sbsrf-update"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Hotleave <hotleave@gmail.com>"]
 description = "声笔输入法更新程序"
@@ -16,10 +16,11 @@ unsafe_code = "forbid"
 clap = { version = "4.5.4", features = ["env", "unicode", "derive"] }
 console = { version = "0.15.8", features = ["windows-console-colors"] }
 dialoguer = "0.11.0"
+futures = "0.3.30"
 indicatif = "0.17.8"
 rayon = "1.10.0"
 regex = "1.10.4"
-reqwest = { version = "0.12.2", features = ["json"] }
+reqwest = { version = "0.12.2", features = ["json", "blocking"] }
 serde = { version = "1.0.197", features = ["serde_derive"] }
 serde_json = "1"
 tempfile = "3.10.1"

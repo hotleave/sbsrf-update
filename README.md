@@ -9,17 +9,18 @@
 ./sbsrf-update
 ```
 
-## 参数说明：
+## CLI 参数说明：
 
 ```text
 Usage: sbsrf-update [OPTIONS]
 
 Options:
-  -f, --force                      强制更新，默认本地版本和服务器版本一致时不作任何操作，强制更新时即使版本相同也会更新
-  -p, --platform <PLATFORM>        目标操作系统，默认为当前系统，用于匹配需要下载的文件
   -w, --working-dir <WORKING_DIR>  工作目录，默认在 $HOME/.sbsrf-update
-  -h, --help                       打印帮助信息
-  -V, --version                    打印本程序的版本信息
+  -f, --force                      强制更新，默认本地版本和服务器版本一致时不作任何操作，强制更新时即使版本相同也会更新
+  -p, --platform <PLATFORM>        目标操作系统，默认为当前系统 [default: macos]
+      --host <HOST>                iOS 设备 IP 地址
+  -h, --help                       Print help
+  -V, --version                    Print version
 ```
 
 ### 配置文件
@@ -29,10 +30,10 @@ Options:
 working_dir = "/Users/hotleave/.sbsrf-update/macos"
 
 [app]
-# 最大备份数量
+# 最大备份数量，设置为 0 时不备份
 max_backups = 1
 
-# 是否下载 octagram.zip
+# 是否下载 octagram.zip，如果使用的是整句输入方案的话，需要该文件，否则不需要
 include_octagram = false
 
 # 版本信息，更新后自动填写，无须更改

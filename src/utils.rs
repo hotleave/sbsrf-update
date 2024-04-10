@@ -1,14 +1,17 @@
+use indicatif::ProgressBar;
+use rayon::prelude::*;
+use reqwest::Client;
 use std::collections::VecDeque;
 use std::fs::{self, File};
 use std::io::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
-use indicatif::ProgressBar;
 use zip::ZipArchive;
-use rayon::prelude::*;
 
 pub fn copy_dir_contents<F>(from: &PathBuf, to: &PathBuf, callback: F) -> std::io::Result<()>
-where F: Fn(&PathBuf) {
+where
+    F: Fn(&PathBuf),
+{
     if !to.exists() {
         fs::create_dir_all(to.clone()).unwrap();
     }
@@ -35,7 +38,10 @@ where F: Fn(&PathBuf) {
     Ok(())
 }
 
-pub async fn download_file<F>(url: String, file_path: PathBuf, callback: F) -> reqwest::Result<()> where F: Fn(usize, u64) {
+pub async fn download_file<F>(url: String, file_path: PathBuf, callback: F) -> reqwest::Result<()>
+where
+    F: Fn(usize, u64),
+{
     if !file_path.parent().unwrap().exists() {
         fs::create_dir_all(file_path.parent().unwrap()).unwrap();
     }
@@ -86,4 +92,51 @@ pub async fn unzip(file_path: PathBuf, output_dir: PathBuf, pb: ProgressBar) {
     });
 
     pb.finish_with_message("完成");
+}
+
+pub async fn upload_to_ios(
+    file_path: PathBuf,
+    device_host: String,
+    pb: ProgressBar,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client = Client::new();
+    let mut stack = VecDeque::new();
+    stack.push_back(file_path.clone());
+
+    let base = file_path.as_path();
+    while let Some(src) = stack.pop_front() {
+        for entry in fs::read_dir(&src)? {
+            let entry = entry?;
+            let entry_path = entry.path();
+
+            if entry_path.is_dir() {
+                stack.push_back(entry_path);
+            } else {
+                let name = entry_path.as_path().strip_prefix(base)?.to_str().unwrap();
+                pb.set_message(format!("上传 {name}"));
+                pb.inc(1);
+
+                let mut buffer = Vec::new();
+                let mut file = File::open(entry_path.clone()).unwrap();
+                file.read_to_end(&mut buffer).unwrap();
+
+                let response = client
+                    .post(format!(
+                        "http://{device_host}/api/tus/Rime/{name}?override=true"
+                    ))
+                    .header("Content-Type", "application/octet-stream")
+                    .body(buffer)
+                    .send()
+                    .await
+                    .unwrap();
+                if !response.status().is_success() {
+                    eprintln!("上传失败")
+                }
+            }
+        }
+    }
+
+    pb.finish_with_message("完成");
+
+    Ok(())
 }
