@@ -6,8 +6,19 @@
 ## 快速开始
 
 ```shell
+# 更新本地方案
 ./sbsrf-update
 ```
+
+### ios 平台仓输入法更新声笔方案
+
+1. 将手机和电脑连接到同一个WiFi下
+2. 打开仓输入法的 Wi-Fi 上传方案，并让屏幕保持在该界面（不能锁屏）
+3. 在电脑上运行命令更新
+  ```shell
+  ./sbsrf-update --platform ios --host 192.168.1.2
+  ```
+4. 在手机上重新部署
 
 ## CLI 参数说明：
 
@@ -19,6 +30,7 @@ Options:
   -f, --force                      强制更新，默认本地版本和服务器版本一致时不作任何操作，强制更新时即使版本相同也会更新
   -p, --platform <PLATFORM>        目标操作系统，默认为当前系统 [default: macos]
       --host <HOST>                iOS 设备 IP 地址
+  -r, --restore                    还原备份的版本
   -h, --help                       Print help
   -V, --version                    Print version
 ```
@@ -44,3 +56,19 @@ version_name = "20240331"
 # Rime 用户目录
 config_path = "/Users/hotleave/Library/Rime"
 ```
+
+## 版本信息
+
+### pending
+
+- [新增] 支持从 github 更新
+
+### 0.2.0
+
+- [新增] 支持 iOS 平台设备上的仓输入法更新
+- [新增] 支持还原到某个备份版本
+
+### 0.1.0
+
+- [新增] 支持 MacOS 及 Windows 平台声笔输入法的更新
+- [新增] 支持更新前备份

@@ -23,6 +23,6 @@ pub struct Cli {
     pub host: Option<String>,
 
     /// 还原备份的版本
-    #[arg(long)]
+    #[arg(short, long)]
     pub restore: bool,
 }
