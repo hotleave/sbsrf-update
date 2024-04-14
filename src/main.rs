@@ -14,6 +14,8 @@ use indicatif::ProgressStyle;
 use release::Release;
 use std::fs;
 use std::path::PathBuf;
+use std::thread::sleep;
+use std::time::Duration;
 use tempfile::tempdir;
 use utils::copy_dir_contents;
 use utils::download_file;
@@ -28,6 +30,7 @@ struct Context {
     pub remote: bool,
     pub host: String,
     pub config: Config,
+    pub rime_home: Option<PathBuf>
 }
 
 impl Context {
@@ -38,6 +41,7 @@ impl Context {
             .unwrap_or(Config::path_in_home(".sbsrf-update").join(platform.clone()));
         let config = config::Config::new(working_dir.clone());
         let remote = platform == "ios";
+        let rime_home = utils::get_rime_home();
 
         Self {
             working_dir,
@@ -46,6 +50,7 @@ impl Context {
             remote,
             host: cli.host.unwrap_or_default(),
             config,
+            rime_home
         }
     }
 }
@@ -164,6 +169,16 @@ async fn backup(ctx: Context) {
     }
     fs::create_dir_all(target_path.clone()).unwrap();
 
+    let mut pid = -1;
+    if ctx.platform == "windows" {
+        pid = utils::check_weasel_server_state();
+        if pid > 0 {
+            println!("检测到小狼毫程序正在运行，需要先停止才能备份，待备份完成后会自动启动");
+            utils::toggle_weasel_server_state(ctx.rime_home.clone().unwrap(), false);
+            sleep(Duration::from_secs(1))
+        }
+    }
+
     let backups = fs::read_dir(backup_path.clone())
         .unwrap()
         .filter_map(Result::ok);
@@ -216,6 +231,12 @@ async fn backup(ctx: Context) {
         })
         .unwrap();
         pb.finish_with_message("完成");
+
+        if pid > 0 {
+            utils::toggle_weasel_server_state(ctx.rime_home.unwrap(), true);
+            sleep(Duration::from_secs(1));
+            println!("小狼毫程序启动完成");
+        }
     }
 }
 
@@ -247,6 +268,16 @@ async fn restore(ctx: Context) {
         .unwrap();
 
     if confirmation {
+        let mut pid = -1;
+        if ctx.platform == "windows" {
+            pid = utils::check_weasel_server_state();
+            if pid > 0 {
+                println!("检测到小狼毫程序正在运行，需要先停止才能备份，待备份完成后会自动启动");
+                utils::toggle_weasel_server_state(ctx.rime_home.clone().unwrap(), false);
+                sleep(Duration::from_secs(1))
+            }
+        }
+
         let spinner_style = ProgressStyle::with_template("{prefix:.bold.dim} {spinner} {wide_msg}")
             .unwrap()
             .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ");
@@ -286,7 +317,16 @@ async fn restore(ctx: Context) {
         config.set_version(version_name);
         config.save();
 
-        println!("还原完成，重新部署即可");
+        if pid > 0 && ctx.rime_home.is_some() {
+            utils::toggle_weasel_server_state(ctx.rime_home.clone().unwrap(), true);
+            sleep(Duration::from_secs(1));
+            println!("小狼毫程序启动完成");
+        }
+
+        if !ctx.remote {
+            utils::deploy(ctx.rime_home);
+        }
+        println!("还原完成");
     }
 }
 
@@ -356,7 +396,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             config.set_version(release_version);
             config.save();
 
-            println!("更新完成，重新部署即可开始使用新版本");
+            utils::deploy(ctx.rime_home);
+
+            println!("更新完成");
         }
     }
 

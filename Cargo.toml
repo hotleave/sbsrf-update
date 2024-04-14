@@ -2,7 +2,7 @@
 
 [package]
 name = "sbsrf-update"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["Hotleave <hotleave@gmail.com>"]
 description = "声笔输入法更新程序"
