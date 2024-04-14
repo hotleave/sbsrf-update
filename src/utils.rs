@@ -7,7 +7,10 @@ use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use zip::ZipArchive;
-use std::process::{Command, Stdio};
+use std::process::Command;
+
+#[cfg(target_os = "macos")]
+use std::process::Stdio;
 
 pub fn copy_dir_contents<F>(from: &Path, to: &Path, callback: F) -> std::io::Result<()>
 where
