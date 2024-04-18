@@ -1,17 +1,35 @@
 mod cli;
 mod config;
+mod device;
+mod error;
 mod release;
 mod utils;
+mod macos;
+mod im;
 
+use clap::Arg;
+use clap::ArgAction;
+use clap::Command;
 use clap::Parser;
 use cli::Cli;
 use config::Config;
 use console::style;
+use device::Device;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
+use error::Error;
+use im::check_file_item;
+use im::IMUpdateConfig;
+use im::InputMethod;
 use indicatif::MultiProgress;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
+use macos::get_fcitx5;
+use macos::get_squirrel;
+use macos::Fcitx5;
+use macos::Squirrel;
 use release::Release;
+use utils::work_dir;
+use std::env::consts::OS;
 use std::fs;
 use std::path::PathBuf;
 use std::thread::sleep;
@@ -30,7 +48,7 @@ struct Context {
     pub remote: bool,
     pub host: String,
     pub config: Config,
-    pub rime_home: Option<PathBuf>
+    pub rime_home: Option<PathBuf>,
 }
 
 impl Context {
@@ -50,31 +68,14 @@ impl Context {
             remote,
             host: cli.host.unwrap_or_default(),
             config,
-            rime_home
+            rime_home,
         }
     }
 }
 
-fn check_file_item(name: &str, ctx: Context) -> bool {
-    if name.starts_with("sbsrf") {
-        return true;
-    }
-
-    if name.starts_with("octagram") {
-        return ctx.config.is_include_octagram();
-    }
-
-    return match ctx.platform.as_str() {
-        "macos" => name.starts_with("squirrel"),
-        "windows" => name.starts_with("weasel"),
-        "android" => name.starts_with("trime"),
-        _ => false,
-    };
-}
-
 async fn upgrade(release: Release, ctx: Context) {
     let assets = release.get_assets();
-    let mut tasks = vec![];
+    // let mut tasks = vec![];
     let m = MultiProgress::new();
 
     let cache_dir = ctx.config.working_dir.parent().unwrap().join("cache");
@@ -84,77 +85,77 @@ async fn upgrade(release: Release, ctx: Context) {
         let url = format!("https://gitee.com{}", _asset.download_url);
         let file_path = cache_dir.join(&name);
 
-        if check_file_item(&name, ctx.clone()) {
-            let task = tokio::spawn(download_and_install(
-                name,
-                url.clone(),
-                file_path,
-                ctx.clone(),
-                m.clone(),
-            ));
-            tasks.push(task);
+        if check_file_item(&name, "", false) {
+            // let task = tokio::spawn(download_and_install(
+            //     name,
+            //     url.clone(),
+            //     file_path,
+            //     ctx.clone(),
+            //     m.clone(),
+            // ));
+            // tasks.push(task);
         }
     }
 
     // Wait for all downloads to finish
-    for task in tasks {
-        task.await.expect("下载或安装失败");
-    }
+    // for task in tasks {
+    //     task.await.expect("下载或安装失败");
+    // }
 }
 
-async fn download_and_install(
-    component: String,
-    url: String,
-    file_path: PathBuf,
-    ctx: Context,
-    m: MultiProgress,
-) {
-    if !file_path.exists() {
-        let bar_style = ProgressStyle::with_template("{prefix:.bold} {spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {binary_bytes}/{binary_total_bytes} ({binary_bytes_per_sec}, {eta})").unwrap().progress_chars("#>-");
-        let pb = m.add(ProgressBar::new(100));
-        pb.set_style(bar_style);
-        pb.set_prefix(format!("下载 {}", component));
+// async fn download_and_install(
+//     component: String,
+//     url: String,
+//     file_path: PathBuf,
+//     ctx: Context,
+//     m: MultiProgress,
+// ) {
+//     if !file_path.exists() {
+//         let bar_style = ProgressStyle::with_template("{prefix:.bold} {spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {binary_bytes}/{binary_total_bytes} ({binary_bytes_per_sec}, {eta})").unwrap().progress_chars("#>-");
+//         let pb = m.add(ProgressBar::new(100));
+//         pb.set_style(bar_style);
+//         pb.set_prefix(format!("下载 {}", component));
 
-        if let Err(err) = download_file(url.clone(), file_path.clone(), |len, total| {
-            pb.set_length(total);
-            pb.inc(len as u64);
-        })
-        .await
-        {
-            eprintln!("Error downloading file {}: {}", file_path.display(), err);
-            return;
-        }
-        pb.finish();
-    }
+//         if let Err(err) = download_file(url.clone(), file_path.clone(), |len, total| {
+//             pb.set_length(total);
+//             pb.inc(len as u64);
+//         })
+//         .await
+//         {
+//             eprintln!("Error downloading file {}: {}", file_path.display(), err);
+//             return;
+//         }
+//         pb.finish();
+//     }
 
-    let spinner_style = ProgressStyle::with_template("{prefix:.bold.dim} {spinner} {wide_msg}")
-        .unwrap()
-        .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ");
+//     let spinner_style = ProgressStyle::with_template("{prefix:.bold.dim} {spinner} {wide_msg}")
+//         .unwrap()
+//         .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ");
 
-    let pb = m.add(ProgressBar::new_spinner());
-    let prefix = if ctx.remote {
-        format!("解压{}", component)
-    } else {
-        format!("安装{}", component)
-    };
-    pb.set_prefix(prefix);
-    pb.set_style(spinner_style.clone());
+//     let pb = m.add(ProgressBar::new_spinner());
+//     let prefix = if ctx.remote {
+//         format!("解压{}", component)
+//     } else {
+//         format!("安装{}", component)
+//     };
+//     pb.set_prefix(prefix);
+//     pb.set_style(spinner_style.clone());
 
-    let output_dir = if ctx.remote {
-        tempdir().unwrap().into_path()
-    } else {
-        ctx.config.get_rime_config_path()
-    };
-    unzip(file_path, output_dir.clone(), pb).await;
+//     let output_dir = if ctx.remote {
+//         tempdir().unwrap().into_path()
+//     } else {
+//         ctx.config.get_rime_config_path()
+//     };
+//     unzip(file_path, output_dir.clone(), pb).await;
 
-    if ctx.remote {
-        let pb = m.add(ProgressBar::new_spinner());
-        pb.set_prefix("上传");
-        pb.set_style(spinner_style.clone());
-        let _ = upload_to_ios(output_dir.clone(), ctx.host, pb).await;
-        fs::remove_dir_all(output_dir).unwrap();
-    }
-}
+//     if ctx.remote {
+//         let pb = m.add(ProgressBar::new_spinner());
+//         pb.set_prefix("上传");
+//         pb.set_style(spinner_style.clone());
+//         let _ = upload_to_ios(output_dir.clone(), ctx.host, pb).await;
+//         fs::remove_dir_all(output_dir).unwrap();
+//     }
+// }
 
 async fn backup(ctx: Context) {
     let source_path = ctx.config.get_rime_config_path();
@@ -170,31 +171,14 @@ async fn backup(ctx: Context) {
     fs::create_dir_all(target_path.clone()).unwrap();
 
     let mut pid = -1;
+
+    #[cfg(target_os = "windows")]
     if ctx.platform == "windows" {
         pid = utils::check_weasel_server_state();
         if pid > 0 {
             println!("检测到小狼毫程序正在运行，需要先停止才能备份，待备份完成后会自动启动");
             utils::toggle_weasel_server_state(ctx.rime_home.clone().unwrap(), false);
             sleep(Duration::from_secs(1))
-        }
-    }
-
-    let backups = fs::read_dir(backup_path.clone())
-        .unwrap()
-        .filter_map(Result::ok);
-    let count = backups.count();
-    if count >= ctx.config.get_max_backups() as usize {
-        let backups = fs::read_dir(backup_path.clone())
-            .unwrap()
-            .filter_map(Result::ok);
-        let mut backup_items: Vec<_> = backups.collect();
-        backup_items.sort_by_key(|x| x.file_name());
-        let to_be_removed: Vec<_> = backup_items
-            .iter()
-            .take(count + 1 - ctx.config.get_max_backups() as usize)
-            .collect();
-        for backup in to_be_removed {
-            fs::remove_dir_all(backup.path()).unwrap();
         }
     }
 
@@ -209,14 +193,14 @@ async fn backup(ctx: Context) {
 
         let url = format!("http://{}/api/raw/Rime", ctx.host);
 
-        if let Err(err) = download_file(url, target_path.join("Rime.zip"), |len, total| {
-            pb.set_length(total);
-            pb.inc(len as u64);
-        })
-        .await
-        {
-            eprintln!("备份失败: {}", err);
-        }
+        // if let Err(err) = download_file(url, target_path.join("Rime.zip"), |len, total| {
+        //     pb.set_length(total);
+        //     pb.inc(len as u64);
+        // })
+        // .await
+        // {
+        //     eprintln!("备份失败: {}", err);
+        // }
         pb.finish();
     } else {
         let spinner_style = ProgressStyle::with_template("{prefix:.bold.dim} {spinner} {wide_msg}")
@@ -232,6 +216,7 @@ async fn backup(ctx: Context) {
         .unwrap();
         pb.finish_with_message("完成");
 
+        #[cfg(target_os = "windows")]
         if pid > 0 {
             utils::toggle_weasel_server_state(ctx.rime_home.unwrap(), true);
             sleep(Duration::from_secs(1));
@@ -268,11 +253,13 @@ async fn restore(ctx: Context) {
         .unwrap();
 
     if confirmation {
+        #[cfg(target_os = "windows")]
         let mut pid = -1;
+        #[cfg(target_os = "windows")]
         if ctx.platform == "windows" {
             pid = utils::check_weasel_server_state();
             if pid > 0 {
-                println!("检测到小狼毫程序正在运行，需要先停止才能备份，待备份完成后会自动启动");
+                println!("检测到小狼毫程序正在运行，需要先停止才能还原，待还原完成后会自动启动");
                 utils::toggle_weasel_server_state(ctx.rime_home.clone().unwrap(), false);
                 sleep(Duration::from_secs(1))
             }
@@ -288,7 +275,7 @@ async fn restore(ctx: Context) {
             let output_dir = ctx.working_dir;
             let pb = ProgressBar::new_spinner();
             pb.set_style(spinner_style.clone());
-            unzip(file_path, output_dir.clone(), pb).await;
+            // unzip(file_path, output_dir.clone(), pb).await;
             output_dir.join("Rime")
         } else {
             backups[selected].path()
@@ -301,7 +288,9 @@ async fn restore(ctx: Context) {
         pb.set_prefix("还原");
 
         if ctx.remote {
-            upload_to_ios(from.clone(), ctx.host, pb.clone()).await.unwrap();
+            upload_to_ios(from.clone(), ctx.host, pb.clone())
+                .await
+                .unwrap();
             fs::remove_dir_all(from).unwrap();
         } else {
             copy_dir_contents(&from, &to, |entry| {
@@ -317,6 +306,7 @@ async fn restore(ctx: Context) {
         config.set_version(version_name);
         config.save();
 
+        #[cfg(target_os = "windows")]
         if pid > 0 && ctx.rime_home.is_some() {
             utils::toggle_weasel_server_state(ctx.rime_home.clone().unwrap(), true);
             sleep(Duration::from_secs(1));
@@ -330,8 +320,176 @@ async fn restore(ctx: Context) {
     }
 }
 
+async fn update(name: &str, force: bool) -> Result<(), Box<dyn std::error::Error>> {
+    if let Ok(Some(config)) = IMUpdateConfig::new(name) {
+        // 获取发布信息
+        let release = Release::init().await?;
+        let version = release.get_version();
+
+        if version == config.version && !force {
+            println!(
+                "设备 {name} 上安装的已经是最新版本：{}",
+                release.get_version()
+            )
+        } else {
+            if !force {
+                println!("{}", style(release.get_release_info()).green());
+                println!("新版本 {} 已经发布", style(&version).cyan());
+            }
+
+            let info = if force {
+                "目标设备上已经是最新版本，是否要覆盖升级？"
+            } else {
+                "是否要升级到最新版本？"
+            };
+            let confirmation = Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt(info)
+                .default(true)
+                .interact()
+                .unwrap();
+
+            if confirmation {
+                match config.name.as_str() {
+                    "Squirrel" => Squirrel::new(config.clone()).update(release).await,
+                    _ => println!("不支持该输入法下声笔的安装: {name}"),
+                }
+
+                let mut new_config = config.clone();
+                new_config.save(&version);
+            }
+        }
+    } else {
+        println!("指定的设备不存在：{name}");
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let name_arg = Arg::new("name").default_value(OS).help("设备唯一名称");
+    let m = clap::command!()
+        .flatten_help(true)
+        .subcommand(
+            Command::new("device")
+                .about("设备管理")
+                .disable_help_flag(true)
+                .arg(name_arg.clone())
+                .arg(
+                    Arg::new("add")
+                        .action(ArgAction::SetTrue)
+                        .long("add")
+                        .short('a')
+                        .help("添加设备")
+                        .conflicts_with_all(["remove", "edit", "show"]),
+                )
+                .arg(
+                    Arg::new("edit")
+                        .action(ArgAction::SetTrue)
+                        .long("edit")
+                        .short('e')
+                        .help("编辑设备信息")
+                        .conflicts_with_all(["add", "remove", "show"]),
+                )
+                .arg(
+                    Arg::new("show")
+                        .action(ArgAction::SetTrue)
+                        .long("show")
+                        .short('s')
+                        .help("显示设备明细")
+                        .conflicts_with_all(["add", "remove", "edit"]),
+                )
+                .arg(
+                    Arg::new("remove")
+                        .action(ArgAction::SetTrue)
+                        .long("remove")
+                        .short('r')
+                        .help("移除设备")
+                        .conflicts_with_all(["add", "edit", "show"]),
+                ),
+        )
+        .subcommand(
+            Command::new("devices")
+                .about("设备列表")
+                .disable_help_flag(true)
+                .arg(
+                    Arg::new("more")
+                        .short('m')
+                        .long("more")
+                        .action(ArgAction::SetTrue)
+                        .help("显示更多信息"),
+                ),
+        )
+        .subcommand(
+            Command::new("update")
+                .about("升级词声笔输入法词库")
+                .disable_help_flag(true)
+                .arg(
+                    Arg::new("force")
+                        .action(ArgAction::SetTrue)
+                        .long("force")
+                        .short('f')
+                        .help("强制更新"),
+                )
+                .arg(name_arg.clone()),
+        )
+        .subcommand(
+            Command::new("restore")
+                .about("还原到某个备份版本")
+                .disable_help_flag(true)
+                .arg(name_arg.clone()),
+        )
+        .subcommand(
+            Command::new("clean")
+                .about("清理工作目录")
+                .disable_help_flag(true)
+                .arg(
+                    Arg::new("cache")
+                        .long("cache")
+                        .short('c')
+                        .action(ArgAction::SetTrue),
+                ),
+        )
+        .get_matches();
+
+    match m.subcommand() {
+        Some(("device", device_matches)) => {
+            let name = device_matches.get_one::<String>("name").unwrap();
+            if device_matches.get_flag("add") {
+                println!("Add a new remote device: {name}")
+            }
+            if device_matches.get_flag("remove") {
+                println!("Remove a device: {name}")
+            }
+            if device_matches.get_flag("edit") {
+                println!("Edit a device: {name}")
+            }
+            if device_matches.get_flag("show") {
+                println!("Show device info: {name}")
+            }
+        }
+        Some(("devices", devices_matches)) => {
+            let more = devices_matches.get_flag("more");
+            println!("Print all devices: {more}");
+        }
+        Some(("update", update_matches)) => {
+            let force = update_matches.get_flag("force");
+            let name = update_matches.get_one::<String>("name").unwrap();
+            if let Err(error) = update(name, force).await {
+                eprintln!("更新失败：{}", error)
+            }
+        }
+
+        _ => {
+            update(OS, false).await?;
+        }
+    }
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main2() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli::Cli::parse();
     let ctx = Context::new(cli.clone());
 

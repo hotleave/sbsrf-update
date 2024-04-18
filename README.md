@@ -77,3 +77,6 @@ config_path = "/Users/hotleave/Library/Rime"
 
 - [新增] 支持 MacOS 及 Windows 平台声笔输入法的更新
 - [新增] 支持更新前备份
+
+
+##

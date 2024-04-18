@@ -33,8 +33,8 @@ pub struct Release {
 
 impl Release {
     pub async fn init() -> Result<Self, reqwest::Error> {
-        // let response = reqwest::get("http://127.0.0.1:18080/sbxlm/sbxlm/releases/latest").await?;
-        let response = reqwest::get("https://gitee.com/sbxlm/sbxlm/releases/latest").await?;
+        let response = reqwest::get("http://127.0.0.1:18080/sbxlm/sbxlm/releases/latest").await?;
+        // let response = reqwest::get("https://gitee.com/sbxlm/sbxlm/releases/latest").await?;
         response.json::<Release>().await
     }
 
@@ -44,6 +44,11 @@ impl Release {
 
     pub fn get_assets(&self) -> Vec<AttachFile> {
         self.release.release.attach_files.clone()
+    }
+
+    pub fn get_download_url(&self, uri: String) -> String {
+        // let url = format!("https://gitee.com{}", uri);
+        format!("http://127.0.0.1:18080{}", &uri)
     }
 
     pub fn get_release_info(&self) -> String {

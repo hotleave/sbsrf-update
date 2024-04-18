@@ -1,7 +1,8 @@
-use indicatif::ProgressBar;
+use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use reqwest::Client;
 use std::collections::VecDeque;
+use std::env::consts::OS;
 use std::fs::{self, File};
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
@@ -42,7 +43,7 @@ where
     Ok(())
 }
 
-pub async fn download_file<F>(url: String, file_path: PathBuf, callback: F) -> reqwest::Result<()>
+pub async fn download_file<F>(url: String, file_path: &PathBuf, callback: F) -> reqwest::Result<()>
 where
     F: Fn(usize, u64),
 {
@@ -61,7 +62,7 @@ where
     Ok(())
 }
 
-pub async fn unzip(file_path: PathBuf, output_dir: PathBuf, pb: ProgressBar) {
+pub async fn unzip(file_path: &PathBuf, output_dir: &PathBuf, pb: ProgressBar) {
     let file = File::open(&file_path).unwrap();
     let archive = ZipArchive::new(file).unwrap();
     let file_path_arc = Arc::new(file_path);
@@ -145,6 +146,52 @@ pub async fn upload_to_ios(
     Ok(())
 }
 
+pub fn work_dir() -> PathBuf {
+    let home = if OS.to_string() == "windows".to_string() {
+        std::env::var("USERPROFILE").unwrap()
+    } else {
+        std::env::var("HOME").unwrap()
+    };
+
+    PathBuf::from(home).join(".sbsrf-update")
+}
+
+pub fn get_bar_style() -> ProgressStyle {
+    let template = "{prefix:.bold} {spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {binary_bytes}/{binary_total_bytes} ({binary_bytes_per_sec}, {eta})";
+    ProgressStyle::with_template(&template)
+        .unwrap()
+        .progress_chars("#>-")
+}
+
+pub fn get_spinner_style() -> ProgressStyle {
+    ProgressStyle::with_template("{prefix:.bold.dim} {spinner} {wide_msg}")
+        .unwrap()
+        .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ")
+}
+
+pub fn ensure_max_backups(backup_path: &PathBuf, max_backups: i32) {
+    if !backup_path.exists() {
+        fs::create_dir_all(backup_path).unwrap();
+        return;
+    }
+
+    let backups = fs::read_dir(backup_path)
+        .unwrap()
+        .filter_map(Result::ok);
+    let count = backups.count();
+    if count >= max_backups as usize {
+        let backups = fs::read_dir(backup_path)
+            .unwrap()
+            .filter_map(Result::ok);
+        let mut backup_items: Vec<_> = backups.collect();
+        backup_items.sort_by_key(|x| x.file_name());
+        backup_items
+            .iter()
+            .take(count + 1 - max_backups as usize)
+            .for_each(|backup| fs::remove_dir_all(backup.path()).unwrap())
+    }
+}
+
 #[cfg(target_os = "macos")]
 pub fn get_rime_home() -> Option<PathBuf> {
     let ps = Command::new("ps")
@@ -186,7 +233,7 @@ pub fn get_rime_home() -> Option<PathBuf> {
     }
 }
 
-// #[cfg(target_os = "windows")]
+#[cfg(target_os = "windows")]
 pub fn check_weasel_server_state() -> i32 {
     let output = Command::new("tasklist")
         .args(["/FI", "IMAGENAME eq WeaselServer.exe"])
@@ -235,7 +282,7 @@ fn get_weasel_home(process_id: i32) -> PathBuf {
 /**
  * 启动或关闭 WeaselServer
  */
-// #[cfg(target_os = "windows")]
+#[cfg(target_os = "windows")]
 pub fn toggle_weasel_server_state(weasel_home: PathBuf, start: bool) {
     let mut cmd = Command::new(weasel_home.join("WeaselServer.exe") .as_os_str());
     if !start {
