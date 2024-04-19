@@ -1,16 +1,23 @@
 use std::{
-    env::{self, consts::OS}, fs::{self, File}, io::{copy, Cursor}, path::PathBuf, process::Command
+    env::{self, consts::OS},
+    fs::{self, File},
+    io::{copy, Cursor},
+    path::PathBuf,
+    process::Command,
 };
 
 use indicatif::{MultiProgress, ProgressBar};
+use std::io::prelude::*;
 use tempfile::tempdir;
 use zip::ZipArchive;
-use std::io::prelude::*;
 
 use crate::{
     im::{check_file_item, IMUpdateConfig, InputMethod},
     release::Release,
-    utils::{copy_dir_contents, download_and_install, download_file, ensure_max_backups, get_bar_style, get_rime_home, get_spinner_style, grep, open, work_dir},
+    utils::{
+        copy_dir_contents, download_and_install, download_file, ensure_max_backups, get_bar_style,
+        get_rime_home, get_spinner_style, grep, open, work_dir,
+    },
 };
 
 #[derive(Debug)]
@@ -27,7 +34,9 @@ impl Squirrel {
         let update_dir = work_dir().join(OS);
         IMUpdateConfig {
             name: "Squirrel".to_string(),
-            exe: Some(PathBuf::from("/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel")),
+            exe: Some(PathBuf::from(
+                "/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel",
+            )),
             user_dir: PathBuf::from(std::env::var("HOME").unwrap()).join("Library/Rime"),
             update_dir,
             max_backups: 1,
@@ -88,13 +97,13 @@ impl InputMethod for Squirrel {
                     open(&temp_file);
                     break;
                 }
-                
+
                 break;
             }
         }
     }
 
-    fn backup(&self) {
+    async fn backup(&self) {
         let max_backups = self.config.max_backups;
         if self.config.max_backups == 0 {
             return;
@@ -123,7 +132,7 @@ impl InputMethod for Squirrel {
         pb.finish_with_message("完成");
     }
 
-    fn restore(&self, version: &PathBuf) {
+    async fn restore(&self, version: &PathBuf) {
         let from = self.config.update_dir.join("backups").join(version);
         let to = PathBuf::from(env::var("HOME").unwrap()).join("Library/Rime");
         fs::remove_dir_all(&to).unwrap();
@@ -145,7 +154,7 @@ impl InputMethod for Squirrel {
 
     async fn update(&self, release: Release) {
         println!("开始为本地的鼠须管更新声笔输入法...");
-        self.backup();
+        self.backup().await;
 
         let assets = release.get_assets();
         let m = MultiProgress::new();
@@ -158,8 +167,9 @@ impl InputMethod for Squirrel {
 
             let name = asset.name;
             let download_url = release.get_download_url(asset.download_url);
+            let target_dir = self.config.clone().user_dir;
             let task = tokio::spawn(download_and_install(
-                self.config.clone(),
+                target_dir,
                 name,
                 download_url,
                 m.clone(),

@@ -52,11 +52,11 @@ impl InputMethod for Fcitx5 {
         todo!()
     }
 
-    fn backup(&self) {
+    async fn backup(&self) {
         todo!()
     }
 
-    fn restore(&self, version: &PathBuf) {
+    async fn restore(&self, version: &PathBuf) {
         todo!()
     }
 

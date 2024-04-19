@@ -92,12 +92,12 @@ pub trait InputMethod {
     /**
      * 备份
      */
-    fn backup(&self);
+    async fn backup(&self);
 
     /**
      * 回滚
      */
-    fn restore(&self, version: &PathBuf);
+    async fn restore(&self, version: &PathBuf);
 
     /**
      * 更新

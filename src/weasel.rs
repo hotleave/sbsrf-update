@@ -2,7 +2,6 @@ use std::{path::PathBuf, process::Command};
 
 use crate::im::{IMUpdateConfig, InputMethod};
 
-
 #[derive(Debug)]
 pub struct Weasel {
     pub config: IMUpdateConfig,
@@ -61,11 +60,11 @@ impl InputMethod for Weasel {
         todo!()
     }
 
-    fn backup(&self) {
+    async fn backup(&self) {
         todo!()
     }
 
-    fn restore(&self, version: &PathBuf) {
+    async fn restore(&self, version: &PathBuf) {
         todo!()
     }
 

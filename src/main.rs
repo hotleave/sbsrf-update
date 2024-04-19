@@ -2,11 +2,12 @@ mod cli;
 mod config;
 mod device;
 mod error;
-mod release;
-mod utils;
-mod squirrel;
 mod fcitx5;
-mod weasel;
+mod release;
+mod squirrel;
+mod utils;
+// mod weasel;
+mod hamster;
 mod im;
 
 use clap::Arg;
@@ -26,10 +27,9 @@ use im::InputMethod;
 use indicatif::MultiProgress;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
+use release::Release;
 use squirrel::get_squirrel;
 use squirrel::Squirrel;
-use release::Release;
-use utils::work_dir;
 use std::env::consts::OS;
 use std::fs;
 use std::path::PathBuf;
@@ -40,6 +40,9 @@ use utils::copy_dir_contents;
 use utils::download_file;
 use utils::unzip;
 use utils::upload_to_ios;
+use utils::work_dir;
+
+use crate::hamster::Hamster;
 
 #[derive(Clone)]
 struct Context {
@@ -226,8 +229,13 @@ async fn backup(ctx: Context) {
     }
 }
 
-async fn restore(name: &str) {
+async fn restore(name: &str, host: Option<&String>) {
     if let Ok(Some(config)) = IMUpdateConfig::new(name) {
+        if config.name == "Hamster" && host.is_none() {
+            println!("需要用 -H 或 --host 指定远程设备的地址，如：-H 192.168.1.108");
+            return;
+        }
+
         let backup_path = config.update_dir.join("backups");
         println!("backup_path={:?}", backup_path);
         let mut backups: Vec<fs::DirEntry> = fs::read_dir(&backup_path)
@@ -257,7 +265,16 @@ async fn restore(name: &str) {
 
         if confirmation {
             match config.name.as_str() {
-                "Squirrel" => Squirrel::new(config.clone()).restore(&backups[selected].path()),
+                "Squirrel" => {
+                    Squirrel::new(config.clone())
+                        .restore(&backups[selected].path())
+                        .await
+                }
+                "Hamster" => {
+                    Hamster::new(config.clone(), host.unwrap().clone())
+                        .restore(&backups[selected].path())
+                        .await
+                }
                 _ => println!("不支持该输入法下声笔的还原操作: {name}"),
             }
 
@@ -265,7 +282,6 @@ async fn restore(name: &str) {
             new_config.save(&selections[selected]);
         }
     }
-
 
     // if confirmation {
     //     #[cfg(target_os = "windows")]
@@ -337,13 +353,7 @@ async fn restore(name: &str) {
 
 #[cfg(target_os = "macos")]
 async fn install_if_needed(release: &Release) {
-    use std::{fs::File, io::{copy, BufReader, Cursor, Read}};
-
-    use tempfile::tempfile;
-    use utils::get_bar_style;
-    use zip::ZipArchive;
-
-    use crate::{fcitx5::Fcitx5, utils::{get_spinner_style, open}};
+    use crate::fcitx5::Fcitx5;
 
     if let Ok(Some(_)) = IMUpdateConfig::new(OS) {
         return;
@@ -369,8 +379,14 @@ async fn install_if_needed(release: &Release) {
                         let mut config = Squirrel::default_config();
                         let squirrel = Squirrel::new(config.clone());
 
-                        if let Some(asset) = release.get_assets().into_iter().find(|x| x.name.starts_with("squirrel")) {
-                            squirrel.install(&asset.name, &release.get_download_url(asset.download_url)).await;
+                        if let Some(asset) = release
+                            .get_assets()
+                            .into_iter()
+                            .find(|x| x.name.starts_with("squirrel"))
+                        {
+                            squirrel
+                                .install(&asset.name, &release.get_download_url(asset.download_url))
+                                .await;
                         }
 
                         config.write_config();
@@ -382,17 +398,17 @@ async fn install_if_needed(release: &Release) {
                     } else {
                         println!("请先启动 Squirrel 或 Fcitx5");
                     }
-                },
+                }
                 1 => {
                     // 将 squirrel 设置为默认
                     let mut config = squirrel.unwrap().config;
                     config.rename(OS);
-                },
+                }
                 2 => {
                     // 将 fcitx5 设置为默认
                     let mut config = fcitx5.unwrap().config;
                     config.rename(OS);
-                },
+                }
                 3 => {
                     // 由用户选择默认
                     let selections = ["Squirrel", "Fcitx5"];
@@ -403,11 +419,15 @@ async fn install_if_needed(release: &Release) {
                         .interact()
                         .unwrap();
 
-                    let mut config = if selected == 0 { squirrel.unwrap().config } else { fcitx5.unwrap().config };
+                    let mut config = if selected == 0 {
+                        squirrel.unwrap().config
+                    } else {
+                        fcitx5.unwrap().config
+                    };
                     config.rename(OS);
 
                     println!("已将 {select} 设置为默认，如果要更新 {alter} 请使用 \"sbsrf-udpate {alter}\"", select = selections[selected], alter = selections[1 - selected])
-                },
+                }
                 _ => {
                     // 不可能出现的情况
                 }
@@ -416,8 +436,17 @@ async fn install_if_needed(release: &Release) {
     }
 }
 
-async fn update(name: &str, force: bool) -> Result<(), Box<dyn std::error::Error>> {
+async fn update(
+    name: &str,
+    force: bool,
+    host: Option<&String>,
+) -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(Some(config)) = IMUpdateConfig::new(name) {
+        if config.name == "Hamster" && host.is_none() {
+            println!("需要用 -H 或 --host 指定远程设备的地址，如：-H 192.168.1.108");
+            return Ok(());
+        }
+
         // 获取发布信息
         let release = Release::init().await?;
         let version = release.get_version();
@@ -447,6 +476,12 @@ async fn update(name: &str, force: bool) -> Result<(), Box<dyn std::error::Error
             if confirmation {
                 match config.name.as_str() {
                     "Squirrel" => Squirrel::new(config.clone()).update(release).await,
+                    "Hamster" => {
+                        let host = host.unwrap();
+                        Hamster::new(config.clone(), host.clone())
+                            .update(release)
+                            .await
+                    }
                     _ => println!("不支持该输入法下声笔的安装: {name}"),
                 }
 
@@ -464,6 +499,11 @@ async fn update(name: &str, force: bool) -> Result<(), Box<dyn std::error::Error
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let name_arg = Arg::new("name").default_value(OS).help("设备唯一名称");
+    let host_arg = Arg::new("host")
+        .long("host")
+        .short('H')
+        .help("远程设备地址");
+
     let m = clap::command!()
         .flatten_help(true)
         .subcommand(
@@ -527,12 +567,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .short('f')
                         .help("强制更新"),
                 )
+                .arg(host_arg.clone())
                 .arg(name_arg.clone()),
         )
         .subcommand(
             Command::new("restore")
                 .about("还原到某个备份版本")
                 .disable_help_flag(true)
+                .arg(host_arg.clone())
                 .arg(name_arg.clone()),
         )
         .subcommand(
@@ -552,7 +594,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(("device", matches)) => {
             let name = matches.get_one::<String>("name").unwrap();
             if matches.get_flag("add") {
-                println!("Add a new remote device: {name}")
+                let mut config = Hamster::default_config(name);
+                config.write_config();
+                println!("添加完成，配置位于：{}", config.update_dir.display());
             }
             if matches.get_flag("remove") {
                 println!("Remove a device: {name}")
@@ -571,20 +615,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(("update", matches)) => {
             let force = matches.get_flag("force");
             let name = matches.get_one::<String>("name").unwrap();
-            if let Err(error) = update(name, force).await {
+            let host = matches.try_get_one::<String>("host").unwrap();
+            if let Err(error) = update(name, force, host).await {
                 eprintln!("更新失败：{}", error)
             }
         }
         Some(("restore", matches)) => {
             let name = matches.get_one::<String>("name").unwrap();
-            restore(name).await;
+            let host = matches.try_get_one::<String>("host").unwrap();
+            restore(name, host).await;
         }
 
         _ => {
             // 获取发布信息
             let release = Release::init().await?;
             install_if_needed(&release).await;
-            update(OS, false).await?;
+            update(OS, false, None).await?;
         }
     }
 

@@ -6,9 +6,9 @@ use std::env::consts::OS;
 use std::fs::{self, File};
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 use zip::ZipArchive;
-use std::process::Command;
 
 #[cfg(target_os = "macos")]
 use std::process::Stdio;
@@ -65,7 +65,7 @@ where
     Ok(())
 }
 
-pub async fn unzip(file_path: &PathBuf, output_dir: &PathBuf, pb: ProgressBar) {
+pub async fn unzip(file_path: &PathBuf, output_dir: &PathBuf, pb: &ProgressBar) {
     let file = File::open(&file_path).unwrap();
     let archive = ZipArchive::new(file).unwrap();
     let file_path_arc = Arc::new(file_path);
@@ -103,9 +103,9 @@ pub async fn unzip(file_path: &PathBuf, output_dir: &PathBuf, pb: ProgressBar) {
 }
 
 pub async fn upload_to_ios(
-    file_path: PathBuf,
-    device_host: String,
-    pb: ProgressBar,
+    file_path: &PathBuf,
+    device_host: &str,
+    pb: &ProgressBar,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
     let mut stack = VecDeque::new();
@@ -178,14 +178,10 @@ pub fn ensure_max_backups(backup_path: &PathBuf, max_backups: i32) {
         return;
     }
 
-    let backups = fs::read_dir(backup_path)
-        .unwrap()
-        .filter_map(Result::ok);
+    let backups = fs::read_dir(backup_path).unwrap().filter_map(Result::ok);
     let count = backups.count();
     if count >= max_backups as usize {
-        let backups = fs::read_dir(backup_path)
-            .unwrap()
-            .filter_map(Result::ok);
+        let backups = fs::read_dir(backup_path).unwrap().filter_map(Result::ok);
         let mut backup_items: Vec<_> = backups.collect();
         backup_items.sort_by_key(|x| x.file_name());
         backup_items
@@ -230,7 +226,12 @@ pub fn grep(keyword: &str) -> Result<String, Box<dyn std::error::Error>> {
     Ok(output_str.trim().to_string())
 }
 
-pub async fn download_and_install(config: IMUpdateConfig, name: String, url: String, m: MultiProgress) {
+pub async fn download_and_install(
+    target_dir: PathBuf,
+    name: String,
+    url: String,
+    m: MultiProgress,
+) {
     let cache_dir = work_dir().join("_cache");
     let file_path = cache_dir.join(&name);
 
@@ -256,7 +257,7 @@ pub async fn download_and_install(config: IMUpdateConfig, name: String, url: Str
     let pb = m.add(ProgressBar::new_spinner());
     pb.set_prefix(format!("更新 {}", &name));
     pb.set_style(get_spinner_style());
-    unzip(&file_path, &config.user_dir, pb).await;
+    unzip(&file_path, &target_dir, &pb).await;
 }
 
 pub fn open(target: &PathBuf) {
@@ -326,7 +327,7 @@ pub fn check_weasel_server_state() -> i32 {
             let mut splited = line.split_ascii_whitespace();
 
             let pid = splited.nth(1).unwrap_or("-1");
-            return pid.parse::<i32>().unwrap()
+            return pid.parse::<i32>().unwrap();
         }
     }
 
@@ -362,8 +363,7 @@ fn get_weasel_home(process_id: i32) -> PathBuf {
  * 重新部署
  */
 #[cfg(target_os = "windows")]
-pub fn deploy(weasel_home: Option<PathBuf>) {
-}
+pub fn deploy(weasel_home: Option<PathBuf>) {}
 
 #[cfg(target_os = "macos")]
 pub fn deploy(rime_home: Option<PathBuf>) {
@@ -371,7 +371,8 @@ pub fn deploy(rime_home: Option<PathBuf>) {
     if let Some(home) = rime_home {
         let output = Command::new(home.join("Squirrel").as_os_str())
             .arg("--reload")
-            .output().expect("部署失败");
+            .output()
+            .expect("部署失败");
         println!("{}", String::from_utf8_lossy(&output.stdout))
     }
 }
