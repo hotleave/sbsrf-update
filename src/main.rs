@@ -4,7 +4,9 @@ mod device;
 mod error;
 mod release;
 mod utils;
-mod macos;
+mod squirrel;
+mod fcitx5;
+mod weasel;
 mod im;
 
 use clap::Arg;
@@ -17,16 +19,15 @@ use console::style;
 use device::Device;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
 use error::Error;
+use fcitx5::get_fcitx5;
 use im::check_file_item;
 use im::IMUpdateConfig;
 use im::InputMethod;
 use indicatif::MultiProgress;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
-use macos::get_fcitx5;
-use macos::get_squirrel;
-use macos::Fcitx5;
-use macos::Squirrel;
+use squirrel::get_squirrel;
+use squirrel::Squirrel;
 use release::Release;
 use utils::work_dir;
 use std::env::consts::OS;
@@ -225,98 +226,193 @@ async fn backup(ctx: Context) {
     }
 }
 
-async fn restore(ctx: Context) {
-    let backup_path = ctx.working_dir.join("backup");
-    let mut backups: Vec<fs::DirEntry> = fs::read_dir(backup_path.clone())
-        .unwrap()
-        .filter_map(Result::ok)
-        .collect();
-    backups.sort_by_key(|x| x.file_name());
+async fn restore(name: &str) {
+    if let Ok(Some(config)) = IMUpdateConfig::new(name) {
+        let backup_path = config.update_dir.join("backups");
+        println!("backup_path={:?}", backup_path);
+        let mut backups: Vec<fs::DirEntry> = fs::read_dir(&backup_path)
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        backups.sort_by_key(|x| x.file_name());
 
-    let selections: Vec<String> = backups
-        .iter()
-        .map(|e| {
-            return e.file_name().to_str().unwrap().to_string();
-        })
-        .collect();
-    let selected = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("选择要恢复的版本")
-        .default(selections.len() - 1)
-        .items(&selections)
-        .interact()
-        .unwrap();
+        let selections: Vec<String> = backups
+            .iter()
+            .map(|e| {
+                return e.file_name().to_str().unwrap().to_string();
+            })
+            .collect();
+        let selected = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("选择要恢复的版本")
+            .default(selections.len() - 1)
+            .items(&selections)
+            .interact()
+            .unwrap();
 
-    let confirmation = Confirm::with_theme(&ColorfulTheme::default())
-        .with_prompt(format!("确认要恢复到 {} 版本吗？", selections[selected]))
-        .default(false)
-        .interact()
-        .unwrap();
+        let confirmation = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt(format!("确认要恢复到 {} 版本吗？", selections[selected]))
+            .default(false)
+            .interact()
+            .unwrap();
 
-    if confirmation {
-        #[cfg(target_os = "windows")]
-        let mut pid = -1;
-        #[cfg(target_os = "windows")]
-        if ctx.platform == "windows" {
-            pid = utils::check_weasel_server_state();
-            if pid > 0 {
-                println!("检测到小狼毫程序正在运行，需要先停止才能还原，待还原完成后会自动启动");
-                utils::toggle_weasel_server_state(ctx.rime_home.clone().unwrap(), false);
-                sleep(Duration::from_secs(1))
+        if confirmation {
+            match config.name.as_str() {
+                "Squirrel" => Squirrel::new(config.clone()).restore(&backups[selected].path()),
+                _ => println!("不支持该输入法下声笔的还原操作: {name}"),
+            }
+
+            let mut new_config = config.clone();
+            new_config.save(&selections[selected]);
+        }
+    }
+
+
+    // if confirmation {
+    //     #[cfg(target_os = "windows")]
+    //     let mut pid = -1;
+    //     #[cfg(target_os = "windows")]
+    //     if ctx.platform == "windows" {
+    //         pid = utils::check_weasel_server_state();
+    //         if pid > 0 {
+    //             println!("检测到小狼毫程序正在运行，需要先停止才能还原，待还原完成后会自动启动");
+    //             utils::toggle_weasel_server_state(ctx.rime_home.clone().unwrap(), false);
+    //             sleep(Duration::from_secs(1))
+    //         }
+    //     }
+
+    //     let spinner_style = ProgressStyle::with_template("{prefix:.bold.dim} {spinner} {wide_msg}")
+    //         .unwrap()
+    //         .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ");
+
+    //     let from = if ctx.remote {
+    //         // 解压
+    //         let file_path = backups[selected].path().join("Rime.zip");
+    //         let output_dir = ctx.working_dir;
+    //         let pb = ProgressBar::new_spinner();
+    //         pb.set_style(spinner_style.clone());
+    //         // unzip(file_path, output_dir.clone(), pb).await;
+    //         output_dir.join("Rime")
+    //     } else {
+    //         backups[selected].path()
+    //     };
+
+    //     let to = ctx.config.get_rime_config_path();
+
+    //     let pb = ProgressBar::new_spinner();
+    //     pb.set_style(spinner_style.clone());
+    //     pb.set_prefix("还原");
+
+    //     if ctx.remote {
+    //         upload_to_ios(from.clone(), ctx.host, pb.clone())
+    //             .await
+    //             .unwrap();
+    //         fs::remove_dir_all(from).unwrap();
+    //     } else {
+    //         copy_dir_contents(&from, &to, |entry| {
+    //             pb.set_message(format!("{}", entry.display()));
+    //             pb.inc(1);
+    //         })
+    //         .unwrap();
+    //     }
+    //     pb.finish_with_message("完成");
+
+    //     let mut config = ctx.config;
+    //     let version_name = selections.get(selected).unwrap().to_string();
+    //     config.set_version(version_name);
+    //     config.save();
+
+    //     #[cfg(target_os = "windows")]
+    //     if pid > 0 && ctx.rime_home.is_some() {
+    //         utils::toggle_weasel_server_state(ctx.rime_home.clone().unwrap(), true);
+    //         sleep(Duration::from_secs(1));
+    //         println!("小狼毫程序启动完成");
+    //     }
+
+    //     if !ctx.remote {
+    //         utils::deploy(ctx.rime_home);
+    //     }
+    //     println!("还原完成");
+    // }
+}
+
+#[cfg(target_os = "macos")]
+async fn install_if_needed(release: &Release) {
+    use std::{fs::File, io::{copy, BufReader, Cursor, Read}};
+
+    use tempfile::tempfile;
+    use utils::get_bar_style;
+    use zip::ZipArchive;
+
+    use crate::{fcitx5::Fcitx5, utils::{get_spinner_style, open}};
+
+    if let Ok(Some(_)) = IMUpdateConfig::new(OS) {
+        return;
+    }
+
+    if let Ok(squirrel) = get_squirrel() {
+        if let Ok(fcitx5) = get_fcitx5() {
+            let mut result = 0;
+            result |= if squirrel.is_none() { 0 } else { 1 };
+            result |= if fcitx5.is_none() { 0 } else { 2 };
+            match result {
+                0 => {
+                    // 由用户选择需要安装的输入法
+                    let selections = ["Squirrel", "Fcitx5", "手动安装", "已安装"];
+                    let selected = Select::with_theme(&ColorfulTheme::default())
+                        .with_prompt("未在系统中检测到受支持的输入法程序，请选择要安装的输入法")
+                        .default(0)
+                        .items(&selections)
+                        .interact()
+                        .unwrap();
+                    if selected == 0 {
+                        // 将 Squirrel 设置为默认
+                        let mut config = Squirrel::default_config();
+                        let squirrel = Squirrel::new(config.clone());
+
+                        if let Some(asset) = release.get_assets().into_iter().find(|x| x.name.starts_with("squirrel")) {
+                            squirrel.install(&asset.name, &release.get_download_url(asset.download_url)).await;
+                        }
+
+                        config.write_config();
+                    } else if selected == 1 {
+                        let mut config = Fcitx5::default_config();
+                        config.write_config();
+                    } else if selected == 2 {
+                        println!("请安装 Squirrel 或 Fcitx5");
+                    } else {
+                        println!("请先启动 Squirrel 或 Fcitx5");
+                    }
+                },
+                1 => {
+                    // 将 squirrel 设置为默认
+                    let mut config = squirrel.unwrap().config;
+                    config.rename(OS);
+                },
+                2 => {
+                    // 将 fcitx5 设置为默认
+                    let mut config = fcitx5.unwrap().config;
+                    config.rename(OS);
+                },
+                3 => {
+                    // 由用户选择默认
+                    let selections = ["Squirrel", "Fcitx5"];
+                    let selected = Select::with_theme(&ColorfulTheme::default())
+                        .with_prompt("发现多个受支持的输入法，请选择默认更新的输入法")
+                        .default(0)
+                        .items(&selections)
+                        .interact()
+                        .unwrap();
+
+                    let mut config = if selected == 0 { squirrel.unwrap().config } else { fcitx5.unwrap().config };
+                    config.rename(OS);
+
+                    println!("已将 {select} 设置为默认，如果要更新 {alter} 请使用 \"sbsrf-udpate {alter}\"", select = selections[selected], alter = selections[1 - selected])
+                },
+                _ => {
+                    // 不可能出现的情况
+                }
             }
         }
-
-        let spinner_style = ProgressStyle::with_template("{prefix:.bold.dim} {spinner} {wide_msg}")
-            .unwrap()
-            .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ");
-
-        let from = if ctx.remote {
-            // 解压
-            let file_path = backups[selected].path().join("Rime.zip");
-            let output_dir = ctx.working_dir;
-            let pb = ProgressBar::new_spinner();
-            pb.set_style(spinner_style.clone());
-            // unzip(file_path, output_dir.clone(), pb).await;
-            output_dir.join("Rime")
-        } else {
-            backups[selected].path()
-        };
-
-        let to = ctx.config.get_rime_config_path();
-
-        let pb = ProgressBar::new_spinner();
-        pb.set_style(spinner_style.clone());
-        pb.set_prefix("还原");
-
-        if ctx.remote {
-            upload_to_ios(from.clone(), ctx.host, pb.clone())
-                .await
-                .unwrap();
-            fs::remove_dir_all(from).unwrap();
-        } else {
-            copy_dir_contents(&from, &to, |entry| {
-                pb.set_message(format!("{}", entry.display()));
-                pb.inc(1);
-            })
-            .unwrap();
-        }
-        pb.finish_with_message("完成");
-
-        let mut config = ctx.config;
-        let version_name = selections.get(selected).unwrap().to_string();
-        config.set_version(version_name);
-        config.save();
-
-        #[cfg(target_os = "windows")]
-        if pid > 0 && ctx.rime_home.is_some() {
-            utils::toggle_weasel_server_state(ctx.rime_home.clone().unwrap(), true);
-            sleep(Duration::from_secs(1));
-            println!("小狼毫程序启动完成");
-        }
-
-        if !ctx.remote {
-            utils::deploy(ctx.rime_home);
-        }
-        println!("还原完成");
     }
 }
 
@@ -453,34 +549,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .get_matches();
 
     match m.subcommand() {
-        Some(("device", device_matches)) => {
-            let name = device_matches.get_one::<String>("name").unwrap();
-            if device_matches.get_flag("add") {
+        Some(("device", matches)) => {
+            let name = matches.get_one::<String>("name").unwrap();
+            if matches.get_flag("add") {
                 println!("Add a new remote device: {name}")
             }
-            if device_matches.get_flag("remove") {
+            if matches.get_flag("remove") {
                 println!("Remove a device: {name}")
             }
-            if device_matches.get_flag("edit") {
+            if matches.get_flag("edit") {
                 println!("Edit a device: {name}")
             }
-            if device_matches.get_flag("show") {
+            if matches.get_flag("show") {
                 println!("Show device info: {name}")
             }
         }
-        Some(("devices", devices_matches)) => {
-            let more = devices_matches.get_flag("more");
+        Some(("devices", matches)) => {
+            let more = matches.get_flag("more");
             println!("Print all devices: {more}");
         }
-        Some(("update", update_matches)) => {
-            let force = update_matches.get_flag("force");
-            let name = update_matches.get_one::<String>("name").unwrap();
+        Some(("update", matches)) => {
+            let force = matches.get_flag("force");
+            let name = matches.get_one::<String>("name").unwrap();
             if let Err(error) = update(name, force).await {
                 eprintln!("更新失败：{}", error)
             }
         }
+        Some(("restore", matches)) => {
+            let name = matches.get_one::<String>("name").unwrap();
+            restore(name).await;
+        }
 
         _ => {
+            // 获取发布信息
+            let release = Release::init().await?;
+            install_if_needed(&release).await;
             update(OS, false).await?;
         }
     }
@@ -488,77 +591,77 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[tokio::main]
-async fn main2() -> Result<(), Box<dyn std::error::Error>> {
-    let cli = cli::Cli::parse();
-    let ctx = Context::new(cli.clone());
+// #[tokio::main]
+// async fn main2() -> Result<(), Box<dyn std::error::Error>> {
+//     let cli = cli::Cli::parse();
+//     let ctx = Context::new(cli.clone());
 
-    if cli.restore {
-        restore(ctx).await;
-        return Ok(());
-    }
+//     if cli.restore {
+//         restore(ctx).await;
+//         return Ok(());
+//     }
 
-    let local_version = ctx.config.get_version();
-    let release = Release::init().await?;
-    let release_version = release.get_version();
+//     let local_version = ctx.config.get_version();
+//     let release = Release::init().await?;
+//     let release_version = release.get_version();
 
-    if release_version == local_version && !ctx.force {
-        println!(
-            "{} 上安装的已经是最新版本: {}",
-            style(ctx.platform).cyan(),
-            style(local_version.clone()).cyan()
-        );
-    } else {
-        let force = release_version == local_version && ctx.force;
-        if !force {
-            println!("{}", style(release.get_release_info()).green());
-            println!(
-                "最新的 Release 版本 {} 已经发布",
-                style(release.get_version()).cyan()
-            );
-        }
+//     if release_version == local_version && !ctx.force {
+//         println!(
+//             "{} 上安装的已经是最新版本: {}",
+//             style(ctx.platform).cyan(),
+//             style(local_version.clone()).cyan()
+//         );
+//     } else {
+//         let force = release_version == local_version && ctx.force;
+//         if !force {
+//             println!("{}", style(release.get_release_info()).green());
+//             println!(
+//                 "最新的 Release 版本 {} 已经发布",
+//                 style(release.get_version()).cyan()
+//             );
+//         }
 
-        let confirmation = Confirm::with_theme(&ColorfulTheme::default())
-            .with_prompt(if force {
-                "本地已经是最新版本，是否要重新升级？"
-            } else {
-                "是否要升级到最新版本？"
-            })
-            .default(true)
-            .interact()
-            .unwrap();
+//         let confirmation = Confirm::with_theme(&ColorfulTheme::default())
+//             .with_prompt(if force {
+//                 "本地已经是最新版本，是否要重新升级？"
+//             } else {
+//                 "是否要升级到最新版本？"
+//             })
+//             .default(true)
+//             .interact()
+//             .unwrap();
 
-        if confirmation {
-            if ctx.config.get_max_backups() > 0 {
-                backup(ctx.clone()).await;
-            }
+//         if confirmation {
+//             if ctx.config.get_max_backups() > 0 {
+//                 backup(ctx.clone()).await;
+//             }
 
-            if ctx.platform == "ios" {
-                let confirmation = Confirm::with_theme(&ColorfulTheme::default())
-                    .with_prompt(
-                        "ios 设备是否已经打开 'Wi-Fi 上传方案' 且与当前终端连接到了同一网络？",
-                    )
-                    .default(false)
-                    .interact()
-                    .unwrap();
+//             if ctx.platform == "ios" {
+//                 let confirmation = Confirm::with_theme(&ColorfulTheme::default())
+//                     .with_prompt(
+//                         "ios 设备是否已经打开 'Wi-Fi 上传方案' 且与当前终端连接到了同一网络？",
+//                     )
+//                     .default(false)
+//                     .interact()
+//                     .unwrap();
 
-                if !confirmation {
-                    println!("ios 设备升级时需要与当前终端处于同一网络，且已打开仓输入法的 Wi-Fi 上传方案。在更新期间不要关闭 ios 设备屏幕，否则会导致更新失败");
-                    return Ok(());
-                }
-            }
+//                 if !confirmation {
+//                     println!("ios 设备升级时需要与当前终端处于同一网络，且已打开仓输入法的 Wi-Fi 上传方案。在更新期间不要关闭 ios 设备屏幕，否则会导致更新失败");
+//                     return Ok(());
+//                 }
+//             }
 
-            upgrade(release, ctx.clone()).await;
+//             upgrade(release, ctx.clone()).await;
 
-            let mut config = ctx.config.clone();
-            config.set_version(release_version);
-            config.save();
+//             let mut config = ctx.config.clone();
+//             config.set_version(release_version);
+//             config.save();
 
-            utils::deploy(ctx.rime_home);
+//             utils::deploy(ctx.rime_home);
 
-            println!("更新完成");
-        }
-    }
+//             println!("更新完成");
+//         }
+//     }
 
-    Ok(())
-}
+//     Ok(())
+// }

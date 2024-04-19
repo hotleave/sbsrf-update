@@ -1,4 +1,4 @@
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use reqwest::Client;
 use std::collections::VecDeque;
@@ -12,6 +12,9 @@ use std::process::Command;
 
 #[cfg(target_os = "macos")]
 use std::process::Stdio;
+
+use crate::error::Error;
+use crate::im::IMUpdateConfig;
 
 pub fn copy_dir_contents<F>(from: &Path, to: &Path, callback: F) -> std::io::Result<()>
 where
@@ -192,6 +195,77 @@ pub fn ensure_max_backups(backup_path: &PathBuf, max_backups: i32) {
     }
 }
 
+pub fn grep(keyword: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let ps = Command::new("ps")
+        .arg("aux")
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("ps 命令失败");
+
+    let grep = Command::new("grep")
+        .arg(keyword)
+        .stdin(ps.stdout.unwrap())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("grep 命令失败");
+
+    let tr = Command::new("tr")
+        .args(["-s", " "])
+        .stdin(grep.stdout.unwrap())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("tr 命令失败");
+
+    let output = Command::new("cut")
+        .args(["-d", " ", "-f", "11-"])
+        .stdin(tr.stdout.unwrap())
+        .output()
+        .expect("cut 命令失败");
+
+    let output_str = String::from_utf8(output.stdout).unwrap();
+    if output_str.trim() == "" {
+        return Err(Box::new(Error::new(&format!("{keyword} not found"))));
+    }
+
+    Ok(output_str.trim().to_string())
+}
+
+pub async fn download_and_install(config: IMUpdateConfig, name: String, url: String, m: MultiProgress) {
+    let cache_dir = work_dir().join("_cache");
+    let file_path = cache_dir.join(&name);
+
+    if !file_path.exists() {
+        // 下载文件
+        let pb = m.add(ProgressBar::new(100));
+        pb.set_prefix(format!("下载 {}", &name));
+        pb.set_style(get_bar_style());
+
+        if let Err(error) = download_file(url.to_string(), &file_path, |len, total| {
+            pb.set_length(total);
+            pb.inc(len as u64);
+        })
+        .await
+        {
+            println!("下载文件{}失败: {error}", &name);
+        }
+
+        pb.finish();
+    }
+
+    // 解压
+    let pb = m.add(ProgressBar::new_spinner());
+    pb.set_prefix(format!("更新 {}", &name));
+    pb.set_style(get_spinner_style());
+    unzip(&file_path, &config.user_dir, pb).await;
+}
+
+pub fn open(target: &PathBuf) {
+    Command::new("open")
+        .arg(target.as_os_str())
+        .status()
+        .expect("打开文件失败");
+}
+
 #[cfg(target_os = "macos")]
 pub fn get_rime_home() -> Option<PathBuf> {
     let ps = Command::new("ps")
@@ -283,23 +357,12 @@ fn get_weasel_home(process_id: i32) -> PathBuf {
  * 启动或关闭 WeaselServer
  */
 #[cfg(target_os = "windows")]
-pub fn toggle_weasel_server_state(weasel_home: PathBuf, start: bool) {
-    let mut cmd = Command::new(weasel_home.join("WeaselServer.exe") .as_os_str());
-    if !start {
-        cmd.arg("/q");
-    }
-    cmd.spawn().unwrap();
-}
 
 /**
  * 重新部署
  */
 #[cfg(target_os = "windows")]
 pub fn deploy(weasel_home: Option<PathBuf>) {
-    if let Some(home) = weasel_home {
-        let mut cmd = Command::new(home.join("WeaselDeployer.exe").as_os_str());
-        cmd.spawn().unwrap();
-    }
 }
 
 #[cfg(target_os = "macos")]

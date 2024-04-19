@@ -1,46 +1,17 @@
-use core::str;
 use std::{
-    env::consts::OS, fs, path::PathBuf, process::{Command, Stdio}
+    env::{self, consts::OS}, fs::{self, File}, io::{copy, Cursor}, path::PathBuf, process::Command
 };
 
 use indicatif::{MultiProgress, ProgressBar};
+use tempfile::tempdir;
+use zip::ZipArchive;
+use std::io::prelude::*;
 
 use crate::{
     im::{check_file_item, IMUpdateConfig, InputMethod},
     release::Release,
-    utils::{copy_dir_contents, download_file, ensure_max_backups, get_bar_style, get_spinner_style, unzip, work_dir},
+    utils::{copy_dir_contents, download_and_install, download_file, ensure_max_backups, get_bar_style, get_rime_home, get_spinner_style, grep, open, work_dir},
 };
-
-fn grep(keyword: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let ps = Command::new("ps")
-        .arg("aux")
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("ps 命令失败");
-
-    let grep = Command::new("grep")
-        .arg(keyword)
-        .stdin(ps.stdout.unwrap())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("grep 命令失败");
-
-    let tr = Command::new("tr")
-        .args(["-s", " "])
-        .stdin(grep.stdout.unwrap())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("tr 命令失败");
-
-    let output = Command::new("cut")
-        .args(["-d", " ", "-f", "11-"])
-        .stdin(tr.stdout.unwrap())
-        .output()
-        .expect("查找 Squirrel 进程失败");
-
-    let output_str = String::from_utf8(output.stdout).unwrap();
-    Ok(output_str.trim().to_string())
-}
 
 #[derive(Debug)]
 pub struct Squirrel {
@@ -51,35 +22,19 @@ impl Squirrel {
     pub fn new(config: IMUpdateConfig) -> Self {
         Self { config }
     }
-}
 
-async fn download_and_install(config: IMUpdateConfig, name: String, url: String, m: MultiProgress) {
-    let cache_dir = work_dir().join("_cache");
-    let file_path = cache_dir.join(&name);
-
-    if !file_path.exists() {
-        // 下载文件
-        let pb = m.add(ProgressBar::new(100));
-        pb.set_prefix(format!("下载 {}", &name));
-        pb.set_style(get_bar_style());
-
-        if let Err(error) = download_file(url.to_string(), &file_path, |len, total| {
-            pb.set_length(total);
-            pb.inc(len as u64);
-        })
-        .await
-        {
-            println!("下载文件{}失败: {error}", &name);
+    pub fn default_config() -> IMUpdateConfig {
+        let update_dir = work_dir().join(OS);
+        IMUpdateConfig {
+            name: "Squirrel".to_string(),
+            exe: Some(PathBuf::from("/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel")),
+            user_dir: PathBuf::from(std::env::var("HOME").unwrap()).join("Library/Rime"),
+            update_dir,
+            max_backups: 1,
+            sentence: false,
+            version: "20051203".to_string(),
         }
-
-        pb.finish();
     }
-
-    // 解压
-    let pb = m.add(ProgressBar::new_spinner());
-    pb.set_prefix(format!("更新 {}", &name));
-    pb.set_style(get_spinner_style());
-    unzip(&file_path, &config.user_dir, pb).await;
 }
 
 impl InputMethod for Squirrel {
@@ -95,8 +50,48 @@ impl InputMethod for Squirrel {
         todo!()
     }
 
-    fn install(&self) {
-        todo!()
+    async fn install(&self, name: &str, download_url: &str) {
+        let file_path = work_dir().join("_cache").join(name);
+        let pb = ProgressBar::new(100);
+        pb.set_prefix(format!("下载 {}", name));
+        pb.set_style(get_bar_style());
+        if let Err(error) = download_file(download_url.to_string(), &file_path, |len, total| {
+            pb.set_length(total);
+            pb.inc(len as u64);
+        })
+        .await
+        {
+            println!("下载文件{}失败: {error}", name);
+        }
+        pb.finish();
+
+        let file = File::open(&file_path).unwrap();
+        let mut archive = ZipArchive::new(file).unwrap();
+        for i in 0..archive.len() {
+            let mut entry = archive.by_index(i).unwrap();
+            if (*entry.name()).starts_with("Squirrel") {
+                let mut buffer = Vec::new();
+                entry.read_to_end(&mut buffer).unwrap();
+
+                let cursor = Cursor::new(buffer);
+                let mut archive = ZipArchive::new(cursor).unwrap();
+                for j in 0..archive.len() {
+                    let mut file = archive.by_index(j).unwrap();
+                    if !(*file.name()).ends_with(".pkg") {
+                        continue;
+                    }
+
+                    let temp_dir = tempdir().unwrap();
+                    let temp_file = temp_dir.into_path().join(&file.name());
+                    let mut install_file = File::create(&temp_file).unwrap();
+                    copy(&mut file, &mut install_file).unwrap();
+                    open(&temp_file);
+                    break;
+                }
+                
+                break;
+            }
+        }
     }
 
     fn backup(&self) {
@@ -128,8 +123,24 @@ impl InputMethod for Squirrel {
         pb.finish_with_message("完成");
     }
 
-    fn restore(&self) {
-        todo!()
+    fn restore(&self, version: &PathBuf) {
+        let from = self.config.update_dir.join("backups").join(version);
+        let to = PathBuf::from(env::var("HOME").unwrap()).join("Library/Rime");
+        fs::remove_dir_all(&to).unwrap();
+
+        let pb = ProgressBar::new_spinner();
+        pb.set_style(get_spinner_style());
+        pb.set_prefix("还原");
+        if let Err(error) = copy_dir_contents(&from, &to, |entry| {
+            pb.set_message(format!("{}", entry.display()));
+            pb.inc(1);
+        }) {
+            println!("还原失败：{error}")
+        }
+        pb.finish_with_message("完成");
+
+        println!("正在重新部署...");
+        self.deploy();
     }
 
     async fn update(&self, release: Release) {
@@ -176,8 +187,8 @@ impl InputMethod for Squirrel {
 }
 
 pub fn get_squirrel() -> Result<Option<Squirrel>, Box<dyn std::error::Error>> {
-    if let Ok(exe_path) = grep("[S]quirrel") {
-        let update_dir = work_dir().join(OS);
+    if let Ok(exe_path) = grep("[S]quirrel2") {
+        let update_dir = work_dir().join("Squirrel");
         let config_file = update_dir.join("config.toml");
         if config_file.exists() {
             // 配置文件存在，直接读取
@@ -195,49 +206,11 @@ pub fn get_squirrel() -> Result<Option<Squirrel>, Box<dyn std::error::Error>> {
             sentence: false,
             version: "20051203".to_string(),
         };
-        config.save(&config.version.clone());
+        config.write_config();
+
+        println!("Squirrel: {:?}", config);
 
         return Ok(Some(Squirrel::new(config)));
-    }
-
-    Ok(None)
-}
-
-impl Fcitx5 {
-    pub fn new(config: IMUpdateConfig) -> Self {
-        Self { config }
-    }
-}
-
-#[derive(Debug)]
-pub struct Fcitx5 {
-    pub config: IMUpdateConfig,
-}
-
-pub fn get_fcitx5() -> Result<Option<Fcitx5>, Box<dyn std::error::Error>> {
-    if let Ok(exe_path) = grep("[F]citx5") {
-        let update_dir = work_dir().join("Fcitx5");
-        let config_file = update_dir.join("config.toml");
-        if config_file.exists() {
-            // 配置文件存在，直接读取
-            let toml = fs::read_to_string(config_file)?;
-            let config: IMUpdateConfig = toml::from_str(&toml)?;
-            return Ok(Some(Fcitx5::new(config)));
-        }
-
-        let mut config = IMUpdateConfig {
-            // id: "Fcitx5".to_string(),
-            name: "Fcitx5".to_string(),
-            exe: Some(PathBuf::from(exe_path)),
-            user_dir: PathBuf::from(std::env::var("HOME").unwrap())
-                .join(".local/share/fcitx5/rime"),
-            update_dir,
-            max_backups: 1,
-            sentence: false,
-            version: "20051203".to_string(),
-        };
-        config.save(&config.version.clone());
-        return Ok(Some(Fcitx5::new(config)));
     }
 
     Ok(None)

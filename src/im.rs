@@ -46,8 +46,24 @@ impl IMUpdateConfig {
         Ok(None)
     }
 
+    pub fn rename(&mut self, new_name: &str) {
+        let new_dir = work_dir().join(new_name);
+
+        fs::rename(&self.update_dir, &new_dir).unwrap();
+        self.update_dir = new_dir;
+        self.write_config();
+    }
+
     pub fn save(&mut self, version: &str) {
         self.version = version.to_string();
+        self.write_config();
+    }
+
+    pub fn write_config(&mut self) {
+        if !self.update_dir.exists() {
+            fs::create_dir_all(&self.update_dir).unwrap();
+        }
+
         let content = toml::to_string(self).unwrap();
         fs::write(self.update_dir.join("config.toml"), content).unwrap();
     }
@@ -71,7 +87,7 @@ pub trait InputMethod {
     /**
      * 安装
      */
-    fn install(&self);
+    async fn install(&self, name: &str, download_url: &str);
 
     /**
      * 备份
@@ -81,7 +97,7 @@ pub trait InputMethod {
     /**
      * 回滚
      */
-    fn restore(&self);
+    fn restore(&self, version: &PathBuf);
 
     /**
      * 更新
