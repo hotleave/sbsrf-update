@@ -1,5 +1,5 @@
 use std::{
-    env::consts::OS, fs, path::PathBuf, process::{Command, Stdio}
+    env::consts::OS, fs, path::{Path, PathBuf}, process::{Command, Stdio}
 };
 
 use indicatif::{MultiProgress, ProgressBar};
@@ -36,18 +36,6 @@ impl Fcitx5 {
 }
 
 impl InputMethod for Fcitx5 {
-    fn running(&self) -> bool {
-        todo!()
-    }
-
-    fn start(&self) {
-        todo!()
-    }
-
-    fn stop(&self) {
-        todo!()
-    }
-
     async fn install(&self, name: &str, download_url: &str) {
         todo!()
     }
@@ -56,7 +44,7 @@ impl InputMethod for Fcitx5 {
         todo!()
     }
 
-    async fn restore(&self, version: &PathBuf) {
+    async fn restore(&self, version: &Path) {
         todo!()
     }
 

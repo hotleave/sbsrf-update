@@ -1,8 +1,7 @@
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, path::{Path, PathBuf}};
 
 use indicatif::{MultiProgress, ProgressBar};
 use tempfile::tempdir;
-use tokio::runtime::Runtime;
 
 use crate::{
     im::{check_file_item, IMUpdateConfig, InputMethod},
@@ -55,19 +54,7 @@ async fn download_and_upload_to_ios(
 }
 
 impl InputMethod for Hamster {
-    fn running(&self) -> bool {
-        todo!()
-    }
-
-    fn start(&self) {
-        todo!()
-    }
-
-    fn stop(&self) {
-        todo!()
-    }
-
-    async fn install(&self, name: &str, download_url: &str) {
+    async fn install(&self, _: &str, _: &str) {
         todo!()
     }
 
@@ -97,7 +84,7 @@ impl InputMethod for Hamster {
         pb.finish();
     }
 
-    async fn restore(&self, version: &PathBuf) {
+    async fn restore(&self, version: &Path) {
         // 解压
         let file_path = version.join("Rime.zip");
         let output_dir = work_dir().join("_cache");
@@ -112,6 +99,8 @@ impl InputMethod for Hamster {
         let from = output_dir.join("Rime");
         upload_to_ios(&from, &self.host, &pb).await.unwrap();
         fs::remove_dir_all(from).unwrap();
+
+        println!("还原完成，需要在手机上重新部署");
     }
 
     async fn update(&self, release: crate::release::Release) {
@@ -144,6 +133,8 @@ impl InputMethod for Hamster {
                 println!("更新失败：{error}");
             }
         }
+
+        println!("更新完成，需要在手机上重新部署");
     }
 
     fn deploy(&self) {

@@ -14,7 +14,6 @@ use zip::ZipArchive;
 use std::process::Stdio;
 
 use crate::error::Error;
-use crate::im::IMUpdateConfig;
 
 pub fn copy_dir_contents<F>(from: &Path, to: &Path, callback: F) -> std::io::Result<()>
 where
@@ -65,8 +64,8 @@ where
     Ok(())
 }
 
-pub async fn unzip(file_path: &PathBuf, output_dir: &PathBuf, pb: &ProgressBar) {
-    let file = File::open(&file_path).unwrap();
+pub async fn unzip(file_path: &Path, output_dir: &Path, pb: &ProgressBar) {
+    let file = File::open(file_path).unwrap();
     let archive = ZipArchive::new(file).unwrap();
     let file_path_arc = Arc::new(file_path);
 
@@ -103,15 +102,15 @@ pub async fn unzip(file_path: &PathBuf, output_dir: &PathBuf, pb: &ProgressBar) 
 }
 
 pub async fn upload_to_ios(
-    file_path: &PathBuf,
+    file_path: &Path,
     device_host: &str,
     pb: &ProgressBar,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
     let mut stack = VecDeque::new();
-    stack.push_back(file_path.clone());
+    stack.push_back(file_path.to_path_buf());
 
-    let base = file_path.as_path();
+    let base = file_path;
     while let Some(src) = stack.pop_front() {
         for entry in fs::read_dir(&src)? {
             let entry = entry?;
@@ -150,7 +149,7 @@ pub async fn upload_to_ios(
 }
 
 pub fn work_dir() -> PathBuf {
-    let home = if OS.to_string() == "windows".to_string() {
+    let home = if OS == "windows" {
         std::env::var("USERPROFILE").unwrap()
     } else {
         std::env::var("HOME").unwrap()
@@ -161,7 +160,7 @@ pub fn work_dir() -> PathBuf {
 
 pub fn get_bar_style() -> ProgressStyle {
     let template = "{prefix:.bold} {spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {binary_bytes}/{binary_total_bytes} ({binary_bytes_per_sec}, {eta})";
-    ProgressStyle::with_template(&template)
+    ProgressStyle::with_template(template)
         .unwrap()
         .progress_chars("#>-")
 }
@@ -260,119 +259,9 @@ pub async fn download_and_install(
     unzip(&file_path, &target_dir, &pb).await;
 }
 
-pub fn open(target: &PathBuf) {
+pub fn open(target: PathBuf) {
     Command::new("open")
         .arg(target.as_os_str())
         .status()
         .expect("打开文件失败");
-}
-
-#[cfg(target_os = "macos")]
-pub fn get_rime_home() -> Option<PathBuf> {
-    let ps = Command::new("ps")
-        .arg("aux")
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("查找 Squirrel 进程失败");
-
-    let grep = Command::new("grep")
-        .arg("[S]quirrel")
-        .stdin(ps.stdout.unwrap())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("查找 Squirrel 进程失败");
-
-    let output = Command::new("cut")
-        .args(["-f", "11-"])
-        .stdin(grep.stdout.unwrap())
-        .output()
-        .expect("查找 Squirrel 进程失败");
-
-    let output_str = String::from_utf8(output.stdout).unwrap();
-    let splited: Vec<&str> = output_str.split_whitespace().collect();
-    if splited.len() > 10 {
-        let command = splited[10..].join(" ");
-        Some(PathBuf::from(command).parent().unwrap().to_path_buf())
-    } else {
-        Option::None
-    }
-}
-
-#[cfg(target_os = "windows")]
-pub fn get_rime_home() -> Option<PathBuf> {
-    let pid = check_weasel_server_state();
-    if pid > 0 {
-        Some(get_weasel_home(pid))
-    } else {
-        Option::None
-    }
-}
-
-#[cfg(target_os = "windows")]
-pub fn check_weasel_server_state() -> i32 {
-    let output = Command::new("tasklist")
-        .args(["/FI", "IMAGENAME eq WeaselServer.exe"])
-        .output()
-        .expect("检测小狼毫程序运行状态失败");
-    let output_str = String::from_utf8_lossy(&output.stdout);
-
-    println!("{}", output_str);
-
-    // 映像名称                       PID 会话名              会话#       内存使用
-    // ========================= ======== ================ =========== ============
-    // WeaselServer.exe              7528 Console                    1     10,068 K
-    if output_str.contains("WeaselServer.exe") {
-        let mut splited = output_str.split("\r\n");
-        if let Some(line) = splited.nth(3) {
-            let mut splited = line.split_ascii_whitespace();
-
-            let pid = splited.nth(1).unwrap_or("-1");
-            return pid.parse::<i32>().unwrap();
-        }
-    }
-
-    -1
-}
-
-#[cfg(target_os = "windows")]
-fn get_weasel_home(process_id: i32) -> PathBuf {
-    let arg = format!("ProcessId={process_id}");
-    let output = Command::new("wmic")
-        .args(&["process", "where", arg.as_str(), "get", "ExecutablePath"])
-        .output()
-        .expect("获取小狼毫安装路径失败");
-
-    let output_str = String::from_utf8_lossy(&output.stdout);
-    println!("{}", output_str);
-    // ExecutablePath
-    // C:\Program Files (x86)\Rime\weasel-0.14.3\WeaselServer.exe
-    let mut splited = output_str.split("\r\n");
-    if let Some(path) = splited.nth(1) {
-        PathBuf::from(path).parent().unwrap().to_path_buf()
-    } else {
-        PathBuf::new()
-    }
-}
-
-/**
- * 启动或关闭 WeaselServer
- */
-#[cfg(target_os = "windows")]
-
-/**
- * 重新部署
- */
-#[cfg(target_os = "windows")]
-pub fn deploy(weasel_home: Option<PathBuf>) {}
-
-#[cfg(target_os = "macos")]
-pub fn deploy(rime_home: Option<PathBuf>) {
-    println!("重新部署：{:?}", rime_home);
-    if let Some(home) = rime_home {
-        let output = Command::new(home.join("Squirrel").as_os_str())
-            .arg("--reload")
-            .output()
-            .expect("部署失败");
-        println!("{}", String::from_utf8_lossy(&output.stdout))
-    }
 }

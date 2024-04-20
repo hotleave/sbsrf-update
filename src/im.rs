@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::{Path, PathBuf}};
 use serde::{Deserialize, Serialize};
 
 use crate::{release::Release, utils::work_dir};
@@ -71,20 +71,6 @@ impl IMUpdateConfig {
 
 pub trait InputMethod {
     /**
-     * 是否在运行
-     */
-    fn running(&self) -> bool;
-
-    /**
-     * 启动
-     */
-    fn start(&self);
-
-    /**
-     * 停止
-     */
-    fn stop(&self);
-    /**
      * 安装
      */
     async fn install(&self, name: &str, download_url: &str);
@@ -97,7 +83,7 @@ pub trait InputMethod {
     /**
      * 回滚
      */
-    async fn restore(&self, version: &PathBuf);
+    async fn restore(&self, version: &Path);
 
     /**
      * 更新

@@ -1,8 +1,8 @@
 use std::{
-    env::{self, consts::OS},
+    env::consts::OS,
     fs::{self, File},
     io::{copy, Cursor},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
 };
 
@@ -16,7 +16,7 @@ use crate::{
     release::Release,
     utils::{
         copy_dir_contents, download_and_install, download_file, ensure_max_backups, get_bar_style,
-        get_rime_home, get_spinner_style, grep, open, work_dir,
+        get_spinner_style, grep, open, work_dir,
     },
 };
 
@@ -47,18 +47,6 @@ impl Squirrel {
 }
 
 impl InputMethod for Squirrel {
-    fn running(&self) -> bool {
-        todo!()
-    }
-
-    fn start(&self) {
-        todo!()
-    }
-
-    fn stop(&self) {
-        todo!()
-    }
-
     async fn install(&self, name: &str, download_url: &str) {
         let file_path = work_dir().join("_cache").join(name);
         let pb = ProgressBar::new(100);
@@ -91,10 +79,10 @@ impl InputMethod for Squirrel {
                     }
 
                     let temp_dir = tempdir().unwrap();
-                    let temp_file = temp_dir.into_path().join(&file.name());
+                    let temp_file = temp_dir.into_path().join(file.name());
                     let mut install_file = File::create(&temp_file).unwrap();
                     copy(&mut file, &mut install_file).unwrap();
-                    open(&temp_file);
+                    open(temp_file);
                     break;
                 }
 
@@ -132,15 +120,15 @@ impl InputMethod for Squirrel {
         pb.finish_with_message("完成");
     }
 
-    async fn restore(&self, version: &PathBuf) {
-        let from = self.config.update_dir.join("backups").join(version);
-        let to = PathBuf::from(env::var("HOME").unwrap()).join("Library/Rime");
-        fs::remove_dir_all(&to).unwrap();
+    async fn restore(&self, version: &Path) {
+        let from = version;
+        let to = &self.config.user_dir;
+        fs::remove_dir_all(to).unwrap();
 
         let pb = ProgressBar::new_spinner();
         pb.set_style(get_spinner_style());
         pb.set_prefix("还原");
-        if let Err(error) = copy_dir_contents(&from, &to, |entry| {
+        if let Err(error) = copy_dir_contents(from, to, |entry| {
             pb.set_message(format!("{}", entry.display()));
             pb.inc(1);
         }) {
