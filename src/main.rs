@@ -17,6 +17,7 @@ use im::{IMUpdateConfig, InputMethod};
 use release::Release;
 use std::env::consts::OS;
 use std::fs;
+use utils::{open, work_dir};
 
 #[cfg(target_os = "macos")]
 use {
@@ -283,61 +284,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .short('H')
         .help("远程设备地址");
 
+    let device_command = Command::new("device")
+        .about("设备管理")
+        .subcommand(
+            Command::new("list")
+                .about("显示设备列表")
+                .disable_help_flag(true),
+        )
+        .subcommand(
+            Command::new("add")
+                .about("添加远程设备")
+                .disable_help_flag(true)
+                .arg(name_arg.clone()),
+        )
+        .subcommand(
+            Command::new("edit")
+                .about("编辑设备信息")
+                .disable_help_flag(true)
+                .arg(name_arg.clone()),
+        )
+        .subcommand(
+            Command::new("show")
+                .about("显示设备明细")
+                .disable_help_flag(true)
+                .arg(name_arg.clone()),
+        )
+        .subcommand(
+            Command::new("remove")
+                .about("移除远程设备")
+                .disable_help_flag(true)
+                .arg(name_arg.clone()),
+        )
+        .subcommand(
+            Command::new("default")
+                .about("设置默认设备")
+                .disable_help_flag(true)
+                .arg(name_arg.clone()),
+        );
+
     let m = clap::command!()
         .flatten_help(true)
-        .subcommand(
-            Command::new("device")
-                .about("设备管理")
-                .disable_help_flag(true)
-                .arg(name_arg.clone())
-                .arg(
-                    Arg::new("add")
-                        .action(ArgAction::SetTrue)
-                        .long("add")
-                        .help("添加设备")
-                        .conflicts_with_all(["remove", "edit", "show"]),
-                )
-                .arg(
-                    Arg::new("edit")
-                        .action(ArgAction::SetTrue)
-                        .long("edit")
-                        .help("编辑设备信息")
-                        .conflicts_with_all(["add", "remove", "show"]),
-                )
-                .arg(
-                    Arg::new("show")
-                        .action(ArgAction::SetTrue)
-                        .long("show")
-                        .help("显示设备明细")
-                        .conflicts_with_all(["add", "remove", "edit"]),
-                )
-                .arg(
-                    Arg::new("remove")
-                        .action(ArgAction::SetTrue)
-                        .long("remove")
-                        .help("移除设备")
-                        .conflicts_with_all(["add", "edit", "show"]),
-                )
-                .arg(
-                    Arg::new("rename")
-                        .action(ArgAction::SetTrue)
-                        .long("rename")
-                        .help("修改设备名称")
-                        .conflicts_with_all(["add", "edit", "show", "remove"]),
-                ),
-        )
-        .subcommand(
-            Command::new("devices")
-                .about("设备列表")
-                .disable_help_flag(true)
-                .arg(
-                    Arg::new("more")
-                        .short('m')
-                        .long("more")
-                        .action(ArgAction::SetTrue)
-                        .help("显示更多信息"),
-                ),
-        )
+        .subcommand(&device_command)
         .subcommand(
             Command::new("update")
                 .about("升级词声笔输入法词库")
@@ -361,39 +348,85 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .subcommand(
             Command::new("clean")
-                .about("清理工作目录")
+                .about("清理工作目录缓存")
                 .disable_help_flag(true)
                 .arg(
-                    Arg::new("cache")
-                        .long("cache")
-                        .short('c')
+                    Arg::new("all")
+                        .long("all")
+                        .short('a')
+                        .help("删除整个工作目录，包含设备及备份")
                         .action(ArgAction::SetTrue),
                 ),
         )
         .get_matches();
 
     match m.subcommand() {
-        Some(("device", matches)) => {
-            let name = matches.get_one::<String>("name").unwrap();
-            if matches.get_flag("add") {
+        Some(("device", matches)) => match matches.subcommand() {
+            Some(("list", _)) => {
+                if let Ok(entries) = fs::read_dir(work_dir()) {
+                    let mut entries = entries;
+                    while let Some(Ok(entry)) = entries.next() {
+                        let name = entry.file_name().into_string().unwrap();
+                        if name.starts_with("_") {
+                            continue;
+                        }
+
+                        let tic = if name == OS { "->" } else { "  " };
+                        println!("{} {}", tic, entry.file_name().to_str().unwrap());
+                    }
+                }
+            }
+            Some(("add", add_matches)) => {
+                let name = add_matches.get_one::<String>("name").unwrap();
                 let mut config = Hamster::default_config(name);
                 config.write_config();
                 println!("添加完成，配置位于：{}", config.update_dir.display());
             }
-            if matches.get_flag("remove") {
-                println!("Remove a device: {name}")
+            Some(("remove", remove_matches)) => {
+                let name = remove_matches.get_one::<String>("name").unwrap();
+                let confirmation = Confirm::new()
+                    .with_prompt("备份内容已将被删除，且不可恢复, 确认要删除整个工作目录吗？")
+                    .default(false)
+                    .interact()
+                    .unwrap();
+
+                if confirmation {
+                    let dir = work_dir().join(name);
+                    if dir.exists() {
+                        fs::remove_dir_all(dir).unwrap();
+                    }
+
+                    println!("设备 {name} 的配置已移除");
+                }
             }
-            if matches.get_flag("edit") {
-                println!("Edit a device: {name}")
+            Some(("edit", edit_matches)) => {
+                let name = edit_matches.get_one::<String>("name").unwrap();
+                let config_path = work_dir().join(&name).join("config.toml");
+                open(config_path);
             }
-            if matches.get_flag("show") {
-                println!("Show device info: {name}")
+            Some(("show", show_matches)) => {
+                let name = show_matches.get_one::<String>("name").unwrap();
+                let config_path = work_dir().join(&name).join("config.toml");
+                if config_path.exists() {
+                    match fs::read_to_string(config_path) {
+                        Ok(content) => println!("{content}"),
+                        Err(error) => println!("未找到设备 {name} 的配置信息: {error}"),
+                    }
+                }
             }
-        }
-        Some(("devices", matches)) => {
-            let more = matches.get_flag("more");
-            println!("Print all devices: {more}");
-        }
+            Some(("default", default_matches)) => {
+                let name = default_matches.get_one::<String>("name").unwrap();
+                if let Ok(Some(config)) = IMUpdateConfig::new(name) {
+                    config.make_default();
+
+                    println!("已将 {name} 设置为默认设备");
+                }
+            }
+
+            _ => {
+                println!("不支持的命令");
+            }
+        },
         Some(("update", matches)) => {
             let force = matches.get_flag("force");
             let name = matches.get_one::<String>("name").unwrap();
@@ -408,6 +441,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             restore(name, host).await;
         }
 
+        Some(("clean", matches)) => {
+            let all = matches.get_flag("all");
+            if all {
+                let confirmation = Confirm::new()
+                    .with_prompt("备份内容已将被删除，且不可恢复, 确认要删除整个工作目录吗？")
+                    .default(false)
+                    .interact()
+                    .unwrap();
+                if confirmation {
+                    fs::remove_dir_all(work_dir()).unwrap();
+                }
+            } else {
+                fs::remove_dir_all(work_dir().join("_cache")).unwrap();
+                println!("缓存目录已被清理");
+            }
+        }
         _ => {
             // 获取发布信息
             let release = Release::init().await?;
