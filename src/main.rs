@@ -284,7 +284,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .short('H')
         .help("远程设备地址");
 
-    let device_command = Command::new("device")
+    let mut device_command = Command::new("device")
         .about("设备管理")
         .subcommand(
             Command::new("list")
@@ -314,13 +314,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .about("移除远程设备")
                 .disable_help_flag(true)
                 .arg(name_arg.clone()),
-        )
-        .subcommand(
+        );
+
+    if OS == "macos" {
+        device_command = device_command.clone().subcommand(
             Command::new("default")
                 .about("设置默认设备")
                 .disable_help_flag(true)
                 .arg(name_arg.clone()),
         );
+    }
 
     let m = clap::command!()
         .flatten_help(true)
@@ -414,6 +417,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
+
+            #[cfg(target_os = "macos")]
             Some(("default", default_matches)) => {
                 let name = default_matches.get_one::<String>("name").unwrap();
                 if let Ok(Some(config)) = IMUpdateConfig::new(name) {
