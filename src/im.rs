@@ -46,12 +46,13 @@ impl IMUpdateConfig {
         Ok(None)
     }
 
-    pub fn rename(&mut self, new_name: &str) {
-        let new_dir = work_dir().join(new_name);
-
-        fs::rename(&self.update_dir, &new_dir).unwrap();
-        self.update_dir = new_dir;
-        self.write_config();
+    #[cfg(target_os = "macos")]
+    pub fn make_default(&self) {
+        let new_dir = work_dir().join(std::env::consts::OS);
+        if new_dir.exists() {
+            fs::remove_file(new_dir.clone()).unwrap();
+        }
+        std::os::unix::fs::symlink(self.update_dir.clone(), new_dir).unwrap();
     }
 
     pub fn save(&mut self, version: &str) {

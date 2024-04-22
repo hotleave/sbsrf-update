@@ -10,9 +10,6 @@ use std::process::Command;
 use std::sync::Arc;
 use zip::ZipArchive;
 
-
-use crate::error::Error;
-
 pub fn copy_dir_contents<F>(from: &Path, to: &Path, callback: F) -> std::io::Result<()>
 where
     F: Fn(&PathBuf),
@@ -220,7 +217,7 @@ pub fn grep(keyword: &str) -> Result<String, Box<dyn std::error::Error>> {
 
     let output_str = String::from_utf8(output.stdout).unwrap();
     if output_str.trim() == "" {
-        return Err(Box::new(Error::new(&format!("{keyword} not found"))));
+        return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("{keyword} not found"))));
     }
 
     Ok(output_str.trim().to_string())

@@ -1,4 +1,3 @@
-mod error;
 #[cfg(target_os = "macos")]
 mod fcitx5;
 mod hamster;
@@ -65,9 +64,13 @@ async fn install_if_needed(release: &Release) {
                         }
 
                         config.write_config();
+                        config.make_default();
                     } else if selected == 1 {
                         let mut config = Fcitx5::default_config();
+                        let fcitx5 = Fcitx5::new(config.clone());
+                        fcitx5.install("", "").await;
                         config.write_config();
+                        config.make_default();
                     } else if selected == 2 {
                         println!("请安装 Squirrel 或 Fcitx5");
                     } else {
@@ -76,13 +79,14 @@ async fn install_if_needed(release: &Release) {
                 }
                 1 => {
                     // 将 squirrel 设置为默认
-                    let mut config = squirrel.unwrap().config;
-                    config.rename(OS);
+                    let config = squirrel.unwrap().config;
+                    config.make_default();
+                    // config.rename(OS);
                 }
                 2 => {
                     // 将 fcitx5 设置为默认
-                    let mut config = fcitx5.unwrap().config;
-                    config.rename(OS);
+                    let config = fcitx5.unwrap().config;
+                    config.make_default();
                 }
                 3 => {
                     // 由用户选择默认
@@ -94,12 +98,12 @@ async fn install_if_needed(release: &Release) {
                         .interact()
                         .unwrap();
 
-                    let mut config = if selected == 0 {
+                    let config = if selected == 0 {
                         squirrel.unwrap().config
                     } else {
                         fcitx5.unwrap().config
                     };
-                    config.rename(OS);
+                    config.make_default();
 
                     println!("已将 {select} 设置为默认，如果要更新 {alter} 请使用 \"sbsrf-udpate {alter}\"", select = selections[selected], alter = selections[1 - selected])
                 }
@@ -175,6 +179,10 @@ async fn update(
                 match config.name.as_str() {
                     #[cfg(target_os = "macos")]
                     "Squirrel" => Squirrel::new(config.clone()).update(release).await,
+
+                    #[cfg(target_os = "macos")]
+                    "Fcitx5" => Fcitx5::new(config.clone()).update(release).await,
+
                     "Hamster" => {
                         let host = host.unwrap();
                         Hamster::new(config.clone(), host.clone())
@@ -239,6 +247,13 @@ async fn restore(name: &str, host: Option<&String>) {
                         .restore(&backups[selected].path())
                         .await
                 }
+
+                #[cfg(target_os = "macos")]
+                "Fcitx5" => {
+                    Fcitx5::new(config.clone())
+                        .restore(&backups[selected].path())
+                        .await
+                }
                 "Hamster" => {
                     Hamster::new(config.clone(), host.unwrap().clone())
                         .restore(&backups[selected].path())
@@ -279,7 +294,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Arg::new("add")
                         .action(ArgAction::SetTrue)
                         .long("add")
-                        .short('a')
                         .help("添加设备")
                         .conflicts_with_all(["remove", "edit", "show"]),
                 )
@@ -287,7 +301,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Arg::new("edit")
                         .action(ArgAction::SetTrue)
                         .long("edit")
-                        .short('e')
                         .help("编辑设备信息")
                         .conflicts_with_all(["add", "remove", "show"]),
                 )
@@ -295,7 +308,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Arg::new("show")
                         .action(ArgAction::SetTrue)
                         .long("show")
-                        .short('s')
                         .help("显示设备明细")
                         .conflicts_with_all(["add", "remove", "edit"]),
                 )
@@ -303,9 +315,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Arg::new("remove")
                         .action(ArgAction::SetTrue)
                         .long("remove")
-                        .short('r')
                         .help("移除设备")
                         .conflicts_with_all(["add", "edit", "show"]),
+                )
+                .arg(
+                    Arg::new("rename")
+                        .action(ArgAction::SetTrue)
+                        .long("rename")
+                        .help("修改设备名称")
+                        .conflicts_with_all(["add", "edit", "show", "remove"]),
                 ),
         )
         .subcommand(

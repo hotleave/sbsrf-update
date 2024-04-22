@@ -1,5 +1,9 @@
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
+use dialoguer::{theme::ColorfulTheme, Confirm};
 use indicatif::{MultiProgress, ProgressBar};
 use tempfile::tempdir;
 
@@ -85,6 +89,17 @@ impl InputMethod for Hamster {
     }
 
     async fn restore(&self, version: &Path) {
+        let confirmation = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("ios 设备是否已经打开 'Wi-Fi 上传方案' 且与当前终端连接到了同一网络？")
+            .default(false)
+            .interact()
+            .unwrap();
+
+        if !confirmation {
+            println!("ios 设备升级时需要与当前终端处于同一网络，且已打开仓输入法的 Wi-Fi 上传方案。在更新期间不要关闭 ios 设备屏幕，否则会导致更新失败");
+            return;
+        }
+
         // 解压
         let file_path = version.join("Rime.zip");
         let output_dir = work_dir().join("_cache");
@@ -104,6 +119,17 @@ impl InputMethod for Hamster {
     }
 
     async fn update(&self, release: crate::release::Release) {
+        let confirmation = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("ios 设备是否已经打开 'Wi-Fi 上传方案' 且与当前终端连接到了同一网络？")
+            .default(false)
+            .interact()
+            .unwrap();
+
+        if !confirmation {
+            println!("ios 设备升级时需要与当前终端处于同一网络，且已打开仓输入法的 Wi-Fi 上传方案。在更新期间不要关闭 ios 设备屏幕，否则会导致更新失败");
+            return;
+        }
+
         println!("开始为本地的鼠须管更新声笔输入法...");
         self.backup().await;
 

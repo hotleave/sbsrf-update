@@ -1,5 +1,4 @@
 use std::{
-    env::consts::OS,
     fs::{self, File},
     io::{copy, Cursor},
     path::{Path, PathBuf},
@@ -31,7 +30,7 @@ impl Squirrel {
     }
 
     pub fn default_config() -> IMUpdateConfig {
-        let update_dir = work_dir().join(OS);
+        let update_dir = work_dir().join("Squirrel");
         IMUpdateConfig {
             name: "Squirrel".to_string(),
             exe: Some(PathBuf::from(
@@ -195,18 +194,9 @@ pub fn get_squirrel() -> Result<Option<Squirrel>, Box<dyn std::error::Error>> {
             return Ok(Some(Squirrel::new(config)));
         }
 
-        let mut config = IMUpdateConfig {
-            name: "Squirrel".to_string(),
-            exe: Some(PathBuf::from(exe_path)),
-            user_dir: PathBuf::from(std::env::var("HOME").unwrap()).join("Library/Rime"),
-            update_dir,
-            max_backups: 1,
-            sentence: false,
-            version: "20051203".to_string(),
-        };
+        let mut config = Squirrel::default_config();
+        config.exe = Some(PathBuf::from(exe_path));
         config.write_config();
-
-        println!("Squirrel: {:?}", config);
 
         return Ok(Some(Squirrel::new(config)));
     }

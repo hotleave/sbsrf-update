@@ -60,16 +60,12 @@ impl Weasel {
     fn get_weasel_exe(pid: i32) -> Option<PathBuf> {
         let arg = format!("ProcessId={pid}");
         let output = Command::new("wmic")
-            .args(&["process", "where", &arg, "get", "ExecutablePath"])
+            .args(["process", "where", &arg, "get", "ExecutablePath"])
             .output().ok()?;
 
         let output_str = String::from_utf8_lossy(&output.stdout);
         let mut splited = output_str.split("\r\n");
-        if let Some(path) = splited.nth(1) {
-            Some(PathBuf::from(path.trim()))
-        } else {
-            None
-        }
+        splited.nth(1).map(|path| PathBuf::from(path.trim()))
     }
 
     fn toggle_weasel_server_state(&self, start: bool) {
