@@ -1,28 +1,35 @@
 mod error;
+#[cfg(target_os = "macos")]
 mod fcitx5;
 mod hamster;
 mod im;
 mod release;
+#[cfg(target_os = "macos")]
 mod squirrel;
 mod utils;
+#[cfg(target_os = "windows")]
 mod weasel;
 
 use clap::{Arg, ArgAction, Command};
 use console::style;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
-use fcitx5::get_fcitx5;
 use hamster::Hamster;
 use im::{IMUpdateConfig, InputMethod};
 use release::Release;
-use squirrel::{get_squirrel, Squirrel};
 use std::env::consts::OS;
 use std::fs;
-use weasel::Weasel;
+
+#[cfg(target_os = "macos")]
+use {
+    fcitx5::{get_fcitx5, Fcitx5},
+    squirrel::{get_squirrel, Squirrel},
+};
+
+#[cfg(target_os = "windows")]
+use weasel::{get_weasel, Weasel};
 
 #[cfg(target_os = "macos")]
 async fn install_if_needed(release: &Release) {
-    use crate::fcitx5::Fcitx5;
-
     if let Ok(Some(_)) = IMUpdateConfig::new(OS) {
         return;
     }
@@ -104,6 +111,29 @@ async fn install_if_needed(release: &Release) {
     }
 }
 
+#[cfg(target_os = "windows")]
+async fn install_if_needed(release: &Release) {
+    if let Ok(Some(_)) = IMUpdateConfig::new(OS) {
+        return;
+    }
+
+    if let Ok(weasel) = get_weasel() {
+        if weasel.is_none() {
+            let config = Weasel::default_config();
+            let weasel = Weasel::new(config);
+
+            if let Some(asset) = release
+                .get_assets()
+                .into_iter()
+                .find(|x| x.name.starts_with("weasel"))
+            {
+                let download_url = release.get_download_url(asset.download_url);
+                weasel.install(&asset.name, &download_url).await;
+            }
+        }
+    }
+}
+
 async fn update(
     name: &str,
     force: bool,
@@ -143,6 +173,7 @@ async fn update(
 
             if confirmation {
                 match config.name.as_str() {
+                    #[cfg(target_os = "macos")]
                     "Squirrel" => Squirrel::new(config.clone()).update(release).await,
                     "Hamster" => {
                         let host = host.unwrap();
@@ -150,6 +181,7 @@ async fn update(
                             .update(release)
                             .await
                     }
+                    #[cfg(target_os = "windows")]
                     "Weasel" => Weasel::new(config.clone()).update(release).await,
                     _ => println!("不支持该输入法下声笔的安装: {name}"),
                 }
@@ -201,6 +233,7 @@ async fn restore(name: &str, host: Option<&String>) {
 
         if confirmation {
             match config.name.as_str() {
+                #[cfg(target_os = "macos")]
                 "Squirrel" => {
                     Squirrel::new(config.clone())
                         .restore(&backups[selected].path())
@@ -211,6 +244,8 @@ async fn restore(name: &str, host: Option<&String>) {
                         .restore(&backups[selected].path())
                         .await
                 }
+
+                #[cfg(target_os = "windows")]
                 "Weasel" => {
                     Weasel::new(config.clone())
                         .restore(&backups[selected].path())

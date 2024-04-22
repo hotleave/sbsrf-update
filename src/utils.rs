@@ -10,8 +10,6 @@ use std::process::Command;
 use std::sync::Arc;
 use zip::ZipArchive;
 
-#[cfg(target_os = "macos")]
-use std::process::Stdio;
 
 use crate::error::Error;
 
@@ -190,7 +188,10 @@ pub fn ensure_max_backups(backup_path: &PathBuf, max_backups: i32) {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub fn grep(keyword: &str) -> Result<String, Box<dyn std::error::Error>> {
+    use std::process::Stdio;
+
     let ps = Command::new("ps")
         .arg("aux")
         .stdout(Stdio::piped())
@@ -259,9 +260,20 @@ pub async fn download_and_install(
     unzip(&file_path, &target_dir, &pb).await;
 }
 
+#[cfg(target_os = "macos")]
 pub fn open(target: PathBuf) {
+    println!("Open {}", target.display());
     Command::new("open")
         .arg(target.as_os_str())
+        .status()
+        .expect("打开文件失败");
+}
+
+#[cfg(target_os = "windows")]
+pub fn open(target: PathBuf) {
+    println!("Open {}", target.display());
+    Command::new("cmd")
+        .args(["/C", "start", target.to_str().unwrap_or_default()])
         .status()
         .expect("打开文件失败");
 }

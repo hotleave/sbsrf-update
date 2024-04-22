@@ -58,7 +58,7 @@ impl InputMethod for Fcitx5 {
 }
 
 pub fn get_fcitx5() -> Result<Option<Fcitx5>, Box<dyn std::error::Error>> {
-    if let Ok(exe_path) = grep("[F]citx52") {
+    if let Ok(exe_path) = grep("[F]citx5") {
         let update_dir = work_dir().join("Fcitx5");
         let config_file = update_dir.join("config.toml");
         if config_file.exists() {

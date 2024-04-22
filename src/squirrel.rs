@@ -185,7 +185,7 @@ impl InputMethod for Squirrel {
 }
 
 pub fn get_squirrel() -> Result<Option<Squirrel>, Box<dyn std::error::Error>> {
-    if let Ok(exe_path) = grep("[S]quirrel2") {
+    if let Ok(exe_path) = grep("[S]quirrel") {
         let update_dir = work_dir().join("Squirrel");
         let config_file = update_dir.join("config.toml");
         if config_file.exists() {
