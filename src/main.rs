@@ -55,13 +55,11 @@ async fn install_if_needed(release: &Release) {
                         let squirrel = Squirrel::new(config.clone());
 
                         if let Some(asset) = release
-                            .get_assets()
-                            .into_iter()
+                            .assets
+                            .iter()
                             .find(|x| x.name.starts_with("squirrel"))
                         {
-                            squirrel
-                                .install(&asset.name, &release.get_download_url(asset.download_url))
-                                .await;
+                            squirrel.install(&asset.name, &asset.download_url).await;
                         }
 
                         config.write_config();
@@ -127,19 +125,15 @@ async fn install_if_needed(release: &Release) {
             let config = Weasel::default_config();
             let weasel = Weasel::new(config);
 
-            if let Some(asset) = release
-                .get_assets()
-                .into_iter()
-                .find(|x| x.name.starts_with("weasel"))
-            {
-                let download_url = release.get_download_url(asset.download_url);
-                weasel.install(&asset.name, &download_url).await;
+            if let Some(asset) = release.assets.iter().find(|x| x.name.starts_with("weasel")) {
+                weasel.install(&asset.name, &asset.download_url).await;
             }
         }
     }
 }
 
 async fn update(
+    release: Release,
     name: &str,
     force: bool,
     host: Option<&String>,
@@ -151,17 +145,13 @@ async fn update(
         }
 
         // 获取发布信息
-        let release = Release::init().await?;
-        let version = release.get_version();
+        let version = release.clone().version;
 
         if version == config.version && !force {
-            println!(
-                "设备 {name} 上安装的已经是最新版本：{}",
-                release.get_version()
-            )
+            println!("设备 {name} 上安装的已经是最新版本：{version}")
         } else {
             if !force {
-                println!("{}", style(release.get_release_info()).green());
+                println!("{}", style(release.clone().intro).green());
                 println!("新版本 {} 已经发布", style(&version).cyan());
             }
 
@@ -179,19 +169,19 @@ async fn update(
             if confirmation {
                 match config.name.as_str() {
                     #[cfg(target_os = "macos")]
-                    "Squirrel" => Squirrel::new(config.clone()).update(release).await,
+                    "Squirrel" => Squirrel::new(config.clone()).update(release.clone()).await,
 
                     #[cfg(target_os = "macos")]
-                    "Fcitx5" => Fcitx5::new(config.clone()).update(release).await,
+                    "Fcitx5" => Fcitx5::new(config.clone()).update(release.clone()).await,
 
                     "Hamster" => {
                         let host = host.unwrap();
                         Hamster::new(config.clone(), host.clone())
-                            .update(release)
+                            .update(release.clone())
                             .await
                     }
                     #[cfg(target_os = "windows")]
-                    "Weasel" => Weasel::new(config.clone()).update(release).await,
+                    "Weasel" => Weasel::new(config.clone()).update(release.clone()).await,
                     _ => println!("不支持该输入法下声笔的安装: {name}"),
                 }
 
@@ -327,6 +317,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let m = clap::command!()
         .flatten_help(true)
+        .arg(
+            Arg::new("github")
+                .long("github")
+                .short('g')
+                .action(ArgAction::SetTrue)
+                .help("使用 github 上的发布信息而不是默认的 gitee"),
+        )
         .subcommand(&device_command)
         .subcommand(
             Command::new("update")
@@ -363,6 +360,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .get_matches();
 
+    let github = m.get_flag("github");
     match m.subcommand() {
         Some(("device", matches)) => match matches.subcommand() {
             Some(("list", _)) => {
@@ -370,7 +368,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let mut entries = entries;
                     while let Some(Ok(entry)) = entries.next() {
                         let name = entry.file_name().into_string().unwrap();
-                        if name.starts_with("_") {
+                        if name.starts_with('_') {
                             continue;
                         }
 
@@ -404,12 +402,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Some(("edit", edit_matches)) => {
                 let name = edit_matches.get_one::<String>("name").unwrap();
-                let config_path = work_dir().join(&name).join("config.toml");
+                let config_path = work_dir().join(name).join("config.toml");
                 open(config_path);
             }
             Some(("show", show_matches)) => {
                 let name = show_matches.get_one::<String>("name").unwrap();
-                let config_path = work_dir().join(&name).join("config.toml");
+                let config_path = work_dir().join(name).join("config.toml");
                 if config_path.exists() {
                     match fs::read_to_string(config_path) {
                         Ok(content) => println!("{content}"),
@@ -436,7 +434,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let force = matches.get_flag("force");
             let name = matches.get_one::<String>("name").unwrap();
             let host = matches.try_get_one::<String>("host").unwrap();
-            if let Err(error) = update(name, force, host).await {
+            let release = Release::init(github).await?;
+            if let Err(error) = update(release, name, force, host).await {
                 eprintln!("更新失败：{}", error)
             }
         }
@@ -464,9 +463,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         _ => {
             // 获取发布信息
-            let release = Release::init().await?;
+            let release = Release::init(github).await?;
             install_if_needed(&release).await;
-            update(OS, false, None).await?;
+            update(release, OS, false, None).await?;
         }
     }
 

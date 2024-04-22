@@ -1,5 +1,8 @@
-use std::{fs, path::{Path, PathBuf}};
 use serde::{Deserialize, Serialize};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use crate::{release::Release, utils::work_dir};
 

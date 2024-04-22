@@ -133,18 +133,17 @@ impl InputMethod for Hamster {
         println!("开始为本地的鼠须管更新声笔输入法...");
         self.backup().await;
 
-        let assets = release.get_assets();
         let m = MultiProgress::new();
         let mut tasks = vec![];
         let host = self.host.clone();
 
-        for asset in assets {
+        for asset in release.assets {
             if !check_file_item(&asset.name, "hamster", self.config.sentence) {
                 continue;
             }
 
             let name = asset.name;
-            let download_url = release.get_download_url(asset.download_url);
+            let download_url = asset.download_url;
             let task = tokio::spawn(download_and_upload_to_ios(
                 name,
                 download_url,

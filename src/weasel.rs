@@ -1,4 +1,12 @@
-use std::{env::consts::OS, fs::{self, File}, io::copy, path::{Path, PathBuf}, process::Command, thread::sleep, time::Duration};
+use std::{
+    env::consts::OS,
+    fs::{self, File},
+    io::copy,
+    path::{Path, PathBuf},
+    process::Command,
+    thread::sleep,
+    time::Duration,
+};
 
 use indicatif::{MultiProgress, ProgressBar};
 use tempfile::tempdir;
@@ -7,7 +15,8 @@ use zip::ZipArchive;
 use crate::{
     im::{check_file_item, IMUpdateConfig, InputMethod},
     utils::{
-        copy_dir_contents, download_and_install, download_file, ensure_max_backups, get_bar_style, get_spinner_style, open, work_dir
+        copy_dir_contents, download_and_install, download_file, ensure_max_backups, get_bar_style,
+        get_spinner_style, open, work_dir,
     },
 };
 
@@ -61,7 +70,8 @@ impl Weasel {
         let arg = format!("ProcessId={pid}");
         let output = Command::new("wmic")
             .args(["process", "where", &arg, "get", "ExecutablePath"])
-            .output().ok()?;
+            .output()
+            .ok()?;
 
         let output_str = String::from_utf8_lossy(&output.stdout);
         let mut splited = output_str.split("\r\n");
@@ -217,17 +227,16 @@ impl InputMethod for Weasel {
         println!("开始为本地的小狼毫更新声笔输入法...");
         self.backup().await;
 
-        let assets = release.get_assets();
         let m = MultiProgress::new();
         let mut tasks = vec![];
 
-        for asset in assets {
+        for asset in release.assets {
             if !check_file_item(&asset.name, "weasel", self.config.sentence) {
                 continue;
             }
 
             let name = asset.name;
-            let download_url = release.get_download_url(asset.download_url);
+            let download_url = asset.download_url;
             let target_dir = self.config.clone().user_dir;
             let task = tokio::spawn(download_and_install(
                 target_dir,
@@ -265,7 +274,7 @@ impl InputMethod for Weasel {
     }
 }
 
-pub fn get_weasel() -> Result<Option<Weasel>, Box<dyn std::error::Error>>{
+pub fn get_weasel() -> Result<Option<Weasel>, Box<dyn std::error::Error>> {
     let pid = Weasel::get_weasel_server_pid();
     if pid > 0 {
         let update_dir = work_dir().join(OS);

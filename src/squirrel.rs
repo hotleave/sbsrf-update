@@ -143,17 +143,16 @@ impl InputMethod for Squirrel {
         println!("开始为本地的鼠须管更新声笔输入法...");
         self.backup().await;
 
-        let assets = release.get_assets();
         let m = MultiProgress::new();
         let mut tasks = vec![];
 
-        for asset in assets {
+        for asset in release.assets {
             if !check_file_item(&asset.name, "squirrel", self.config.sentence) {
                 continue;
             }
 
             let name = asset.name;
-            let download_url = release.get_download_url(asset.download_url);
+            let download_url = asset.download_url;
             let target_dir = self.config.clone().user_dir;
             let task = tokio::spawn(download_and_install(
                 target_dir,

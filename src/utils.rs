@@ -217,7 +217,10 @@ pub fn grep(keyword: &str) -> Result<String, Box<dyn std::error::Error>> {
 
     let output_str = String::from_utf8(output.stdout).unwrap();
     if output_str.trim() == "" {
-        return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("{keyword} not found"))));
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("{keyword} not found"),
+        )));
     }
 
     Ok(output_str.trim().to_string())

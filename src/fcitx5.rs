@@ -1,5 +1,7 @@
 use std::{
-    fs, path::{Path, PathBuf}, process::Command
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
 };
 
 use indicatif::{MultiProgress, ProgressBar};
@@ -65,11 +67,17 @@ impl InputMethod for Fcitx5 {
         }
 
         if let Err(error) = Command::new("unzip")
-            .args(["-q", zip_file_path.to_str().unwrap(), "-d", work_dir().join("_cache").to_str().unwrap()])
-            .status() {
-                println!("解压文件失败：{error}");
-                return ;
-            }
+            .args([
+                "-q",
+                zip_file_path.to_str().unwrap(),
+                "-d",
+                work_dir().join("_cache").to_str().unwrap(),
+            ])
+            .status()
+        {
+            println!("解压文件失败：{error}");
+            return;
+        }
         open(app_path);
     }
 
@@ -126,17 +134,16 @@ impl InputMethod for Fcitx5 {
         println!("开始为本地的小企鹅更新声笔输入法...");
         self.backup().await;
 
-        let assets = release.get_assets();
         let m = MultiProgress::new();
         let mut tasks = vec![];
 
-        for asset in assets {
+        for asset in release.assets {
             if !check_file_item(&asset.name, "fcitx5", self.config.sentence) {
                 continue;
             }
 
             let name = asset.name;
-            let download_url = release.get_download_url(asset.download_url);
+            let download_url = asset.download_url;
             let target_dir = self.config.clone().user_dir;
             let task = tokio::spawn(download_and_install(
                 target_dir,
