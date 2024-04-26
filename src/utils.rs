@@ -262,7 +262,6 @@ pub async fn download_and_install(
 
 #[cfg(target_os = "macos")]
 pub fn open(target: PathBuf) {
-    println!("Open {}", target.display());
     Command::new("open")
         .arg(target.as_os_str())
         .status()
@@ -271,7 +270,6 @@ pub fn open(target: PathBuf) {
 
 #[cfg(target_os = "windows")]
 pub fn open(target: PathBuf) {
-    println!("Open {}", target.display());
     Command::new("cmd")
         .args(["/C", "start", target.to_str().unwrap_or_default()])
         .status()

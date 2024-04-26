@@ -42,9 +42,9 @@ async fn install_if_needed(release: &Release) {
             match result {
                 0 => {
                     // 由用户选择需要安装的输入法
-                    let selections = ["Squirrel", "Fcitx5", "手动安装", "已安装"];
+                    let selections = ["安装鼠须管程序", "安装小企鹅程序", "手动下载安装", "已安装但未启动"];
                     let selected = Select::with_theme(&ColorfulTheme::default())
-                        .with_prompt("未在系统中检测到受支持的输入法程序，请选择要安装的输入法")
+                        .with_prompt("未在系统中检测到受支持的输入法程序")
                         .default(0)
                         .items(&selections)
                         .interact()
@@ -71,9 +71,9 @@ async fn install_if_needed(release: &Release) {
                         config.write_config();
                         config.make_default();
                     } else if selected == 2 {
-                        println!("请安装 Squirrel 或 Fcitx5");
+                        println!("请安装 鼠须管 或 小企鹅 程序");
                     } else {
-                        println!("请先启动 Squirrel 或 Fcitx5");
+                        println!("请先启动 鼠须管 或 小企鹅 程序");
                     }
                 }
                 1 => {
@@ -122,11 +122,31 @@ async fn install_if_needed(release: &Release) {
 
     if let Ok(weasel) = get_weasel() {
         if weasel.is_none() {
-            let config = Weasel::default_config();
-            let weasel = Weasel::new(config);
+            let selections = ["安装小狼毫", "手动下载安装", "已安装但未启动"];
+            let selected = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("未在系统中检测到受支持的输入法程序")
+                .default(0)
+                .items(&selections)
+                .interact()
+                .unwrap();
+            
+            match selected {
+                0 => {
+                    let config = Weasel::default_config();
+                    let weasel = Weasel::new(config);
 
-            if let Some(asset) = release.assets.iter().find(|x| x.name.starts_with("weasel")) {
-                weasel.install(&asset.name, &asset.download_url).await;
+                    if let Some(asset) = release.assets.iter().find(|x| x.name.starts_with("weasel")) {
+                        weasel.install(&asset.name, &asset.download_url).await;
+                    }
+                },
+
+                1 => {
+                    println!("请先启动 鼠须管 或 小企鹅 程序");
+                },
+
+                _ => {
+                    println!("请安装 小狼毫 程序");
+                }
             }
         }
     }
@@ -135,7 +155,6 @@ async fn install_if_needed(release: &Release) {
 async fn update(
     release: Release,
     name: &str,
-    force: bool,
     host: Option<&String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(Some(config)) = IMUpdateConfig::new(name) {
@@ -146,48 +165,44 @@ async fn update(
 
         // 获取发布信息
         let version = release.clone().version;
+        let force = version == config.version;
 
-        if version == config.version && !force {
-            println!("设备 {name} 上安装的已经是最新版本：{version}")
+        let prompt = if force {
+            "目标设备上安装的已经是最新版本，是否要覆盖升级？"
         } else {
-            if !force {
-                println!("{}", style(release.clone().intro).green());
-                println!("新版本 {} 已经发布", style(&version).cyan());
-            }
+            println!("{}", style(release.clone().intro).green());
+            println!("新版本 {} 已经发布", style(&version).cyan());
 
-            let info = if force {
-                "目标设备上已经是最新版本，是否要覆盖升级？"
-            } else {
-                "是否要升级到最新版本？"
-            };
-            let confirmation = Confirm::with_theme(&ColorfulTheme::default())
-                .with_prompt(info)
-                .default(true)
-                .interact()
-                .unwrap();
+            "是否要升级到最新版本？"
+        };
 
-            if confirmation {
-                match config.name.as_str() {
-                    #[cfg(target_os = "macos")]
-                    "Squirrel" => Squirrel::new(config.clone()).update(release.clone()).await,
+        let confirmation = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt(prompt)
+            .default(!force)
+            .interact()
+            .unwrap();
 
-                    #[cfg(target_os = "macos")]
-                    "Fcitx5" => Fcitx5::new(config.clone()).update(release.clone()).await,
+        if confirmation {
+            match config.name.as_str() {
+                #[cfg(target_os = "macos")]
+                "Squirrel" => Squirrel::new(config.clone()).update(release.clone()).await,
 
-                    "Hamster" => {
-                        let host = host.unwrap();
-                        Hamster::new(config.clone(), host.clone())
-                            .update(release.clone())
-                            .await
-                    }
-                    #[cfg(target_os = "windows")]
-                    "Weasel" => Weasel::new(config.clone()).update(release.clone()).await,
-                    _ => println!("不支持该输入法下声笔的安装: {name}"),
+                #[cfg(target_os = "macos")]
+                "Fcitx5" => Fcitx5::new(config.clone()).update(release.clone()).await,
+
+                "Hamster" => {
+                    let host = host.unwrap();
+                    Hamster::new(config.clone(), host.clone())
+                        .update(release.clone())
+                        .await
                 }
-
-                let mut new_config = config.clone();
-                new_config.save(&version);
+                #[cfg(target_os = "windows")]
+                "Weasel" => Weasel::new(config.clone()).update(release.clone()).await,
+                _ => println!("不支持该输入法下声笔的安装: {name}"),
             }
+
+            let mut new_config = config.clone();
+            new_config.save(&version);
         }
     } else {
         println!("指定的设备不存在：{name}");
@@ -329,13 +344,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Command::new("update")
                 .about("升级词声笔输入法词库")
                 .disable_help_flag(true)
-                .arg(
-                    Arg::new("force")
-                        .action(ArgAction::SetTrue)
-                        .long("force")
-                        .short('f')
-                        .help("强制更新"),
-                )
                 .arg(host_arg.clone())
                 .arg(name_arg.clone()),
         )
@@ -431,11 +439,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         },
         Some(("update", matches)) => {
-            let force = matches.get_flag("force");
             let name = matches.get_one::<String>("name").unwrap();
             let host = matches.try_get_one::<String>("host").unwrap();
             let release = Release::init(github).await?;
-            if let Err(error) = update(release, name, force, host).await {
+            if let Err(error) = update(release, name, host).await {
                 eprintln!("更新失败：{}", error)
             }
         }
@@ -465,84 +472,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // 获取发布信息
             let release = Release::init(github).await?;
             install_if_needed(&release).await;
-            update(release, OS, false, None).await?;
+            update(release, OS, None).await?;
         }
     }
 
     Ok(())
 }
-
-// #[tokio::main]
-// async fn main2() -> Result<(), Box<dyn std::error::Error>> {
-//     let cli = cli::Cli::parse();
-//     let ctx = Context::new(cli.clone());
-
-//     if cli.restore {
-//         restore(ctx).await;
-//         return Ok(());
-//     }
-
-//     let local_version = ctx.config.get_version();
-//     let release = Release::init().await?;
-//     let release_version = release.get_version();
-
-//     if release_version == local_version && !ctx.force {
-//         println!(
-//             "{} 上安装的已经是最新版本: {}",
-//             style(ctx.platform).cyan(),
-//             style(local_version.clone()).cyan()
-//         );
-//     } else {
-//         let force = release_version == local_version && ctx.force;
-//         if !force {
-//             println!("{}", style(release.get_release_info()).green());
-//             println!(
-//                 "最新的 Release 版本 {} 已经发布",
-//                 style(release.get_version()).cyan()
-//             );
-//         }
-
-//         let confirmation = Confirm::with_theme(&ColorfulTheme::default())
-//             .with_prompt(if force {
-//                 "本地已经是最新版本，是否要重新升级？"
-//             } else {
-//                 "是否要升级到最新版本？"
-//             })
-//             .default(true)
-//             .interact()
-//             .unwrap();
-
-//         if confirmation {
-//             if ctx.config.get_max_backups() > 0 {
-//                 backup(ctx.clone()).await;
-//             }
-
-//             if ctx.platform == "ios" {
-//                 let confirmation = Confirm::with_theme(&ColorfulTheme::default())
-//                     .with_prompt(
-//                         "ios 设备是否已经打开 'Wi-Fi 上传方案' 且与当前终端连接到了同一网络？",
-//                     )
-//                     .default(false)
-//                     .interact()
-//                     .unwrap();
-
-//                 if !confirmation {
-//                     println!("ios 设备升级时需要与当前终端处于同一网络，且已打开仓输入法的 Wi-Fi 上传方案。在更新期间不要关闭 ios 设备屏幕，否则会导致更新失败");
-//                     return Ok(());
-//                 }
-//             }
-
-//             upgrade(release, ctx.clone()).await;
-
-//             let mut config = ctx.config.clone();
-//             config.set_version(release_version);
-//             config.save();
-
-//             utils::deploy(ctx.rime_home);
-
-//             println!("更新完成");
-//         }
-//     }
-
-//     Ok(())
-// }

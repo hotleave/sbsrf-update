@@ -60,7 +60,6 @@ sbsrf-update device:
 
 sbsrf-update update:
 升级词声笔输入法词库
-  -f, --force        强制更新
   -H, --host <host>  远程设备地址
   [name]         设备唯一名称 [default: macos]
 
@@ -131,6 +130,10 @@ version = "20240412"
 ```
 
 ## 版本信息
+
+### 0.3.2
+
+- [调整] 去掉 update 命令的 `-f` 参数，当本地版本与发布版本一致时询问是否更新
 
 ### 0.3.1
 
