@@ -183,6 +183,9 @@ async fn update(
             .unwrap();
 
         if confirmation {
+            // 清理缓存目录
+            fs::remove_dir_all(work_dir().join("_cache")).unwrap();
+
             match config.name.as_str() {
                 #[cfg(target_os = "macos")]
                 "Squirrel" => Squirrel::new(config.clone()).update(release.clone()).await,
@@ -332,13 +335,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let m = clap::command!()
         .flatten_help(true)
-        .arg(
-            Arg::new("github")
-                .long("github")
-                .short('g')
-                .action(ArgAction::SetTrue)
-                .help("使用 github 上的发布信息而不是默认的 gitee"),
-        )
         .subcommand(&device_command)
         .subcommand(
             Command::new("update")
@@ -368,7 +364,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .get_matches();
 
-    let github = m.get_flag("github");
     match m.subcommand() {
         Some(("device", matches)) => match matches.subcommand() {
             Some(("list", _)) => {
@@ -441,7 +436,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(("update", matches)) => {
             let name = matches.get_one::<String>("name").unwrap();
             let host = matches.try_get_one::<String>("host").unwrap();
-            let release = Release::init(github).await?;
+            let release = Release::init().await?;
             if let Err(error) = update(release, name, host).await {
                 eprintln!("更新失败：{}", error)
             }
@@ -470,7 +465,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         _ => {
             // 获取发布信息
-            let release = Release::init(github).await?;
+            let release = Release::init().await?;
             install_if_needed(&release).await;
             update(release, OS, None).await?;
         }
