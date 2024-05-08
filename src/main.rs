@@ -15,8 +15,9 @@ use dialoguer::{theme::ColorfulTheme, Confirm, Select};
 use hamster::Hamster;
 use im::{IMUpdateConfig, InputMethod};
 use release::Release;
-use std::env::consts::OS;
-use std::fs;
+use std::io::Write;
+use std::{env::consts::OS, fs::read_to_string};
+use std::fs::{self, create_dir_all};
 use utils::{open, work_dir};
 
 #[cfg(target_os = "macos")]
@@ -183,8 +184,21 @@ async fn update(
             .unwrap();
 
         if confirmation {
-            // 清理缓存目录
-            fs::remove_dir_all(work_dir().join("_cache")).unwrap();
+            let cache_dir = work_dir().join("_cache");
+
+            // 检测缓存目录中的文件版本
+            let info_path = cache_dir.join("version.info");
+            let cache_version = if info_path.exists() { read_to_string(&info_path)? } else { "0".to_string() };
+            if cache_version != version {
+                if cache_dir.exists() {
+                    println!("清理缓存目录...");
+                    fs::remove_dir_all(&cache_dir).unwrap();
+                }
+
+                create_dir_all(&cache_dir)?;
+                let mut info_file = fs::File::create(&info_path)?;
+                info_file.write_all(version.as_bytes())?;
+            }
 
             match config.name.as_str() {
                 #[cfg(target_os = "macos")]
