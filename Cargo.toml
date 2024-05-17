@@ -2,7 +2,7 @@
 
 [package]
 name = "sbsrf-update"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 authors = ["Hotleave <hotleave@gmail.com>"]
 description = "声笔输入法更新程序，支持安装、更新、备份及还原，支持 iOS 设备"
