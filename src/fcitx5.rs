@@ -165,7 +165,16 @@ impl InputMethod for Fcitx5 {
     }
 
     fn deploy(&self) {
-        println!("小企鹅输入法暂时不支持自动部署，请手动从小企鹅输入法的菜单中进行部署");
+        if let Some(exe) = self.config.clone().exe {
+            let mut ancestors = exe.ancestors();
+            if let Some(contents) = ancestors.nth(2) {
+                let fcitx5_curl = contents.to_path_buf().join("bin/fcitx5-curl");
+                Command::new(fcitx5_curl)
+                    .args(["/config/addon/rime/deploy", "-X", "POST", "-d", "{}"])
+                    .spawn()
+                    .expect("部署失败");
+            }
+        }
     }
 }
 
