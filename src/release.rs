@@ -31,7 +31,7 @@ impl GithubRelease {
         let response = reqwest::Client::new()
             .request(
                 Method::GET,
-                "https://api.github.com/repos/sbsrf/home/releases/latest",
+                "https://api.github.com/repos/sbsrf/sbsrf/releases/latest",
             )
             .header("User-Agent", "Sbsrf-Update-App")
             .header("Accept", "application/vnd.github+json")
