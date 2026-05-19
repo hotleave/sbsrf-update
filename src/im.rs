@@ -7,7 +7,7 @@ use std::{
 use crate::{release::Release, utils::work_dir};
 
 pub fn check_file_item(name: &str, im: &str, sentence: bool) -> bool {
-    if name.starts_with("sbsrf") {
+    if name.starts_with("sbsrf4librime") {
         return true;
     }
 

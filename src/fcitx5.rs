@@ -138,7 +138,7 @@ impl InputMethod for Fcitx5 {
         let mut tasks = vec![];
 
         for asset in release.assets {
-            if !check_file_item(&asset.name, "fcitx5", self.config.sentence) {
+            if !check_file_item(&asset.name, "fcitx5-no-extra", self.config.sentence) {
                 continue;
             }
 

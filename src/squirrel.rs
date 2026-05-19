@@ -147,7 +147,7 @@ impl InputMethod for Squirrel {
         let mut tasks = vec![];
 
         for asset in release.assets {
-            if !check_file_item(&asset.name, "squirrel1", self.config.sentence) {
+            if !check_file_item(&asset.name, "squirrel-no-extra", self.config.sentence) {
                 continue;
             }
 

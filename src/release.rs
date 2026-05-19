@@ -37,6 +37,9 @@ impl GithubRelease {
             .header("Accept", "application/vnd.github+json")
             .send()
             .await?;
-        response.json::<Release>().await
+        let json = response.text().await?;
+        println!("{}", json);
+        // response.json::<Release>().await
+        Ok(serde_json::from_str::<Release>(&json).unwrap())
     }
 }
